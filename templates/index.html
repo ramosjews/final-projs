@@ -1,0 +1,410 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COLLEGE OF COMPUTER STUDIES | Event Hub</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+
+<body class="app-body">
+  <button
+    type="button"
+    id="open-admin-login"
+    style="
+      position: fixed;
+      top: 20px;
+      right: 24px;
+      z-index: 1000;
+      background: white;
+      color: black;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-weight: 700;
+      cursor: pointer;
+    "
+  >
+    🛡 Admin Login
+  </button>
+<div
+  id="admin-login-modal"
+  hidden
+  style="
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(20, 5, 30, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  "
+>
+  <div
+    style="
+      background: white;
+      color: #210B2C;;
+      width: 100%;
+      max-width: 400px;
+      padding: 30px;
+      border-radius: 14px;
+      box-sizing: border-box;
+      border: 1px solid #877d7d;
+    "
+  >
+    <button
+      type="button"
+      id="close-admin-login"
+      style="
+        float: right;
+        background: none;
+        color: #ffffff;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+      "
+      aria-label="Close admin login"
+    >×</button>
+
+    <p
+      style="
+        color: #000000;
+        font-size: 12px;
+        letter-spacing: 2px;
+      "
+    >
+      COLLEGE OF COMPUTER STUDIES
+    </p>
+
+    <h2 style="color: #210B2C;">
+      Administrator Login
+    </h2>
+
+    <p style="color: #000000;">
+      Sign in to manage the event system.
+    </p>
+
+    <form id="admin-login-form">
+      <label
+        for="admin-email"
+        style="
+          display: block;
+          color: #ffffff;
+          margin-bottom: 6px;
+        "
+      >
+        Admin Email
+      </label>
+
+      <input
+        id="admin-email"
+        type="email"
+        required
+        autocomplete="username"
+        placeholder="Administrator email"
+        style="
+          display: block;
+          box-sizing: border-box;
+          width: 100%;
+          margin: 8px 0 18px;
+          padding: 12px;
+          border-radius: 6px;
+          border: 1px solid #877d7d;
+          background: #ffffff;
+          color: #1d2733;
+        "
+      >
+
+      <label
+        for="admin-password"
+        style="
+          display: block;
+          color: #ffffff;
+          margin-bottom: 6px;
+        "
+      >
+        Password
+      </label>
+
+      <input
+        id="admin-password"
+        type="password"
+        required
+        autocomplete="current-password"
+        placeholder="Enter admin password"
+        style="
+          display: block;
+          box-sizing: border-box;
+          width: 100%;
+          margin: 8px 0 18px;
+          padding: 12px;
+          border-radius: 6px;
+          border: 1px solid #877d7d;
+          background: #ffffff;
+          color: #1d2733;
+        "
+      >
+
+      <p
+        id="admin-login-error"
+        role="alert"
+        style="
+          color: #ffb3b3;
+        "
+        hidden
+      ></p>
+
+      <button
+        type="submit"
+        style="
+          width: 100%;
+          padding: 13px;
+          background: #877d7d;
+          color: #ffffff;
+          border: none;
+          border-radius: 7px;
+          font-weight: 700;
+          cursor: pointer;
+        "
+      >
+        LOGIN AS ADMIN
+      </button>
+    </form>
+  </div>
+</div>
+
+  <!-- Participant Authentication -->
+  <section id="auth-view" class="auth-screen">
+    <div class="auth-card">
+      <div class="sidebar-logo">C</div>
+      <p class="eyebrow">COLLEGE OF COMPUTER STUDIES</p>
+      <h1 id="auth-title">Welcome Back<span>.</span></h1>
+      <p id="auth-subtitle">Log in to discover and register for events.</p>
+
+      <div class="tabbar">
+        <button type="button" class="tab active" id="login-tab">LOGIN</button>
+        <button type="button" class="tab" id="signup-tab">SIGN UP</button>
+      </div>
+
+      <form id="auth-form">
+        <div class="field" id="student-id-field" hidden>
+          <label for="auth-student-id">Student ID Number</label>
+          <input
+            id="auth-student-id"
+            name="student_id"
+            autocomplete="off"
+            placeholder="Enter your student ID"
+            maxlength="50"
+          >
+        </div>
+
+        <div class="field" id="name-field" hidden>
+          <label for="auth-name">Full Name</label>
+          <input
+            id="auth-name"
+            name="name"
+            autocomplete="name"
+            placeholder="Enter your full name"
+            maxlength="100"
+          >
+        </div>
+
+        <div class="field">
+          <label for="auth-email">Email Address</label>
+          <input
+            id="auth-email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
+            maxlength="254"
+            placeholder="you@example.com"
+          >
+        </div>
+
+        <div class="field">
+          <label for="auth-password">Password</label>
+          <input
+            id="auth-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            minlength="8"
+            placeholder="At least 8 characters"
+          >
+        </div>
+
+        <div id="auth-error" class="form-err" hidden></div>
+        <button type="submit" class="btn btn-gold submit-btn" id="auth-submit">
+          Login
+        </button>
+      </form>
+
+      <p class="auth-note">
+        Participant access only. Admins should use the separate admin login.
+      </p>
+    </div>
+  </section>
+
+  <!-- Participant Dashboard -->
+  <div class="app-layout" id="participant-app" hidden>
+    <aside class="sidebar">
+      <a class="sidebar-brand" href="#" data-go-tab="dashboard">
+        <div class="sidebar-logo">C</div>
+        <div class="sidebar-brand-text">
+          <strong>COLLEGE OF</strong>
+          <span>COMPUTER STUDIES</span>
+        </div>
+      </a>
+
+      <div class="sidebar-label">PARTICIPANT MENU</div>
+
+      <nav class="sidebar-nav">
+        <button class="side-link active" data-tab="dashboard">
+          <span class="side-icon">◫</span><span>Dashboard</span>
+        </button>
+        <button class="side-link" data-tab="events">
+          <span class="side-icon">▦</span><span>Browse Events</span>
+        </button>
+        <button class="side-link" data-tab="mine">
+          <span class="side-icon">▤</span><span>My Registrations</span>
+        </button>
+        <button class="side-link" data-tab="profile">
+          <span class="side-icon">♙</span><span>My Profile</span>
+        </button>
+        <button class="side-link" data-tab="attended">
+          <span class="side-icon">✓</span><span>Attended Events</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="sidebar-bottom-mark">G</div>
+        <div>
+          <strong>YOUR NEXT EVENT</strong>
+          <span>Starts here.</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="topbar-heading">
+          <div class="eyebrow">YOUR EVENT SPACE</div>
+          <h1 id="page-heading">Dashboard<span>.</span></h1>
+        </div>
+
+        <div class="topbar-actions">
+          <label class="search-wrap" id="search-wrap" hidden>
+            <span>⌕</span>
+            <input class="search" id="search" placeholder="Search events..." autocomplete="off">
+          </label>
+          <span id="header-user" class="header-user"></span>
+          <button class="btn btn-ghost" id="logout-btn" type="button">Logout</button>
+        </div>
+      </header>
+
+      <div class="main-content">
+        <section class="welcome-banner" id="welcome-banner">
+          <div class="welcome-copy">
+            <div class="welcome-kicker">DISCOVER · CONNECT · EXPERIENCE</div>
+            <h2>Your next great<br>experience awaits.</h2>
+            <p>Find events worth showing up for.</p>
+            <button class="btn btn-gold" data-go-tab="events" type="button">
+              Explore Events <span>→</span>
+            </button>
+          </div>
+          <div class="welcome-decoration" aria-hidden="true">
+            <div class="decoration-ring ring-one"></div>
+            <div class="decoration-ring ring-two"></div>
+            <div class="decoration-star">✳</div>
+            <div class="decoration-caption">MAKE IT<br>MEMORABLE</div>
+          </div>
+        </section>
+
+        <section id="dashboard-view">
+          <div class="stats-grid">
+            <article class="dashboard-card">
+              <div class="stat-card-top"><span class="stat-card-icon">▦</span><span class="stat-card-label">EVENTS</span></div>
+              <div class="stat-card-number" id="stat-events">0</div>
+              <div class="stat-card-footer">Events available</div>
+            </article>
+            <article class="dashboard-card">
+              <div class="stat-card-top"><span class="stat-card-icon">✓</span><span class="stat-card-label">REGISTRATIONS</span></div>
+              <div class="stat-card-number" id="stat-registrations">0</div>
+              <div class="stat-card-footer">Total reservations made</div>
+            </article>
+            <article class="dashboard-card">
+              <div class="stat-card-top"><span class="stat-card-icon">✦</span><span class="stat-card-label">MY REGISTRATIONS</span></div>
+              <div class="stat-card-number" id="stat-mine">0</div>
+              <div class="stat-card-footer">Your current reservations</div>
+            </article>
+          </div>
+
+          <div class="content-section">
+            <div class="section-heading">
+              <div><div class="eyebrow">HANDPICKED FOR YOU</div><h2>Featured Events</h2></div>
+              <button class="text-link" data-go-tab="events" type="button">View all events →</button>
+            </div>
+            <div id="dashboard-events" class="grid"></div>
+          </div>
+
+          <div class="content-section">
+            <div class="section-heading">
+              <div><div class="eyebrow">YOUR ACTIVITY</div><h2>Recent Registrations</h2></div>
+              <button class="text-link" data-go-tab="mine" type="button">View registrations →</button>
+            </div>
+            <div id="dashboard-registrations"></div>
+          </div>
+        </section>
+
+        <section id="events-view" hidden>
+          <div id="filters-row" class="filters-container"></div>
+          <div class="content-section">
+            <div class="section-heading">
+              <div><div class="eyebrow">FIND YOUR NEXT EXPERIENCE</div><h2>Browse Events</h2></div>
+              <span class="count" id="events-count"></span>
+            </div>
+            <div id="grid" class="grid"></div>
+          </div>
+        </section>
+
+        <section id="mine-view" hidden>
+          <div class="content-section">
+            <div class="section-heading"><div><div class="eyebrow">YOUR RESERVATIONS</div><h2>My Registrations</h2></div></div>
+            <div id="mine-list"></div>
+          </div>
+        </section>
+
+        <section id="profile-view" hidden>
+          <div class="content-section">
+            <div class="section-heading"><div><div class="eyebrow">YOUR INFORMATION</div><h2>My Profile</h2></div></div>
+            <div id="profile-content"></div>
+          </div>
+        </section>
+
+        <section id="attended-view" hidden>
+          <div class="content-section">
+            <div class="section-heading"><div><div class="eyebrow">YOUR EVENT HISTORY</div><h2>Attended Events</h2></div></div>
+            <div id="attended-list"></div>
+          </div>
+        </section>
+
+        <footer class="app-footer">
+          <span>COLLEGE OF COMPUTER STUDIES</span>
+          <span>DISCOVER SOMETHING EXTRAORDINARY.</span>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+
+  <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</body>
+</html>

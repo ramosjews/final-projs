@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COLLEGE OF COMPUTER STUDIES | Admin Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+</head>
+
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <h2>COLLEGE OF COMPUTER STUDIES</h2>
+      <p>Event Management System</p>
+    </div>
+
+    <div class="nav-label">ADMIN MENU</div>
+
+    <nav class="nav-menu">
+      <button class="nav-item" data-tab="registrations">☷ Registrations</button>
+      <button class="nav-item active" data-tab="dashboard">▦ Dashboard</button>
+      <button class="nav-item" data-tab="add-event">＋ Add Event</button>
+      <button class="nav-item" data-tab="events">▣ Events</button>
+      <button class="nav-item" data-tab="participants">♙ Participants</button>
+      <button class="nav-item" data-tab="attendance">✓ Attendance</button>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <button class="logout-btn" id="logout-btn">↪ Log out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">Dashboard</h1>
+        <p>Welcome to your event management dashboard.</p>
+      </div>
+      <span class="admin-label">ADMIN PANEL</span>
+    </header>
+
+    <!-- DASHBOARD -->
+    <section class="view" data-view="dashboard">
+      <div class="stats">
+        <div class="stat-card">
+          <p>Total Events</p>
+          <h2 id="total-events">0</h2>
+        </div>
+        <div class="stat-card">
+          <p>Total Participants</p>
+          <h2 id="total-participants">0</h2>
+        </div>
+        <div class="stat-card">
+          <p>Total Registrations</p>
+          <h2 id="total-registrations">0</h2>
+        </div>
+        <div class="stat-card">
+          <p>Attended</p>
+          <h2 id="total-attendance">0</h2>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Recent Events</h2>
+          <button class="btn btn-outline" data-go="events">View Events</button>
+        </div>
+        <div id="dashboard-events" class="event-list">
+          <div class="empty">Loading events...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADD EVENT -->
+    <section class="view" data-view="add-event" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Create New Event</h2>
+        </div>
+
+        <form id="add-event-form">
+          <div class="form-grid">
+            <div class="field full">
+              <label for="event-title">Event Title *</label>
+              <input id="event-title" name="title" maxlength="150" required>
+            </div>
+
+            <div class="field">
+              <label for="event-category">Category *</label>
+              <input id="event-category" name="category" maxlength="80"
+                     placeholder="e.g. Seminar, Workshop" required>
+            </div>
+
+            <div class="field">
+              <label for="event-date">Date *</label>
+              <input id="event-date" name="date" type="date" required>
+            </div>
+
+            <div class="field">
+              <label for="event-time">Time *</label>
+              <input id="event-time" name="time" type="time" required>
+            </div>
+
+            <div class="field">
+              <label for="event-location">Location *</label>
+              <input id="event-location" name="location" maxlength="200" required>
+            </div>
+
+            <div class="field">
+              <label for="event-capacity">Capacity *</label>
+              <input id="event-capacity" name="capacity" type="number"
+                     min="1" step="1" value="100" required>
+            </div>
+
+            <div class="field full">
+              <label for="event-description">Description</label>
+              <textarea id="event-description" name="description"
+                        placeholder="Enter event details..."></textarea>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-gold" id="save-event-btn">
+              Save Event
+            </button>
+            <button type="reset" class="btn btn-outline">Clear Form</button>
+          </div>
+
+          <p class="message" id="event-form-message" role="status"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- EVENTS -->
+    <section class="view" data-view="events" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Manage Events</h2>
+          <button class="btn btn-gold" data-go="add-event">＋ Add Event</button>
+        </div>
+
+        <div class="toolbar">
+          <input class="search-input" id="event-search"
+                 placeholder="Search by title, category, or location...">
+          <button class="btn btn-outline" id="refresh-events-btn">Refresh</button>
+        </div>
+
+        <p class="message" id="events-message" role="status"></p>
+        <div class="event-list" id="events-list">
+          <div class="empty">Loading events...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PARTICIPANTS -->
+    <section class="view" data-view="participants" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Participants</h2>
+          <button class="btn btn-outline" id="refresh-participants-btn">Refresh</button>
+        </div>
+        <div class="toolbar">
+          <input class="search-input" id="participant-search"
+                 placeholder="Search participants...">
+        </div>
+        <p class="message" id="participants-message" role="status"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Email</th><th>Student ID</th><th>Role</th></tr>
+            </thead>
+            <tbody id="participants-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- REGISTRATIONS -->
+    <section class="view" data-view="registrations" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Event Registrations</h2>
+          <button class="btn btn-outline" id="refresh-registrations-btn">Refresh</button>
+        </div>
+        <div class="toolbar">
+          <input class="search-input" id="registration-search"
+                 placeholder="Search name, event, or email...">
+        </div>
+        <p class="message" id="registrations-message" role="status"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Participant</th><th>Email</th><th>Event</th>
+                <th>Quantity</th><th>Registration Date</th>
+              </tr>
+            </thead>
+            <tbody id="registrations-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ATTENDANCE -->
+    <section class="view" data-view="attendance" hidden>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Attendance Management</h2>
+          <button class="btn btn-outline" id="refresh-attendance-btn">Refresh</button>
+        </div>
+        <div class="toolbar">
+          <input class="search-input" id="attendance-search"
+                 placeholder="Search participant or event...">
+        </div>
+        <p class="message" id="attendance-message" role="status"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Participant</th><th>Event</th><th>Status</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="attendance-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+let allEvents = [];
+let allParticipants = [];
+let allRegistrations = [];
+let editingEventId = null;
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
+async function api(url, options = {}) {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...options,
+    headers: {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || data.message || `Request failed (${response.status})`
+    );
+  }
+
+  return data;
+}
+
+function asArray(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.events)) return data.events;
+  if (Array.isArray(data.users)) return data.users;
+  if (Array.isArray(data.registrations)) return data.registrations;
+  return [];
+}
+
+function showMessage(id, message, type = "") {
+  const element = $("#" + id);
+  if (!element) return;
+
+  element.textContent = message;
+  element.className = "message" + (type ? " " + type : "");
+}
+
+function setView(viewName) {
+  $$(".view").forEach(view => {
+    view.hidden = view.dataset.view !== viewName;
+  });
+
+  $$(".nav-item").forEach(button => {
+    button.classList.toggle("active", button.dataset.tab === viewName);
+  });
+
+  const titles = {
+    dashboard: "Dashboard",
+    "add-event": "Add Event",
+    events: "Events",
+    participants: "Participants",
+    registrations: "Registrations",
+    attendance: "Attendance"
+  };
+
+  const pageTitle = $("#page-title");
+  if (pageTitle) {
+    pageTitle.textContent = titles[viewName] || "Dashboard";
+  }
+
+  if (viewName === "dashboard") loadDashboard();
+  if (viewName === "events") loadEvents();
+  if (viewName === "participants") loadParticipants();
+  if (viewName === "registrations") loadRegistrations();
+  if (viewName === "attendance") loadAttendance();
+}
+
+// Open navigation pages
+$$(".nav-item").forEach(button => {
+  button.addEventListener("click", () => {
+    const view = button.dataset.tab;
+
+    if (view === "add-event") {
+      openEventForm();
+    } else {
+      setView(view);
+    }
+  });
+});
+
+$$("[data-go]").forEach(button => {
+  button.addEventListener("click", () => {
+    const view = button.dataset.go;
+
+    if (view === "add-event") {
+      openEventForm();
+    } else {
+      setView(view);
+    }
+  });
+});
+
+// Get a form field by name
+function getEventField(name) {
+  const form = $("#add-event-form");
+  return form.elements.namedItem(name) || $("#" + (
+    name === "title" ? "event-title" :
+    name === "category" ? "event-category" :
+    name === "date" ? "event-date" :
+    name === "time" ? "event-time" :
+    name === "location" ? "event-location" :
+    name === "capacity" ? "event-capacity" :
+    name === "description" ? "event-description" : name
+  ));
+}
+
+// Open the existing form for creating or editing
+function openEventForm(eventData = null) {
+  const form = $("#add-event-form");
+
+  if (!form) {
+    console.error("The #add-event-form element was not found.");
+    return;
+  }
+
+  form.reset();
+
+  editingEventId = eventData ? eventData.id : null;
+
+  const heading = $("#event-form-title");
+  const button = $("#save-event-btn");
+
+  if (eventData) {
+    // EDIT MODE
+    setView("add-event");
+
+    if (heading) heading.textContent = "Edit Event";
+    if (button) button.textContent = "Update Event";
+
+    const fields = {
+      title: eventData.title,
+      category: eventData.category,
+      date: String(eventData.date || "").slice(0, 10),
+      time: eventData.time,
+      location: eventData.location,
+      capacity: eventData.capacity ?? 100,
+      description: eventData.description
+    };
+
+    Object.entries(fields).forEach(([name, value]) => {
+      const field = getEventField(name);
+
+      if (field) {
+        field.value = value ?? "";
+      } else {
+        console.warn(`Event form field not found: ${name}`);
+      }
+    });
+
+    showMessage("event-form-message", "");
+  } else {
+    // CREATE MODE
+    setView("add-event");
+
+    if (heading) heading.textContent = "Create New Event";
+    if (button) button.textContent = "Save Event";
+
+    const capacityField = getEventField("capacity");
+    if (capacityField) capacityField.value = 100;
+
+    showMessage("event-form-message", "");
+  }
+}
+
+// DASHBOARD
+async function loadDashboard() {
+  try {
+    const [eventsData, usersData, registrationsData] = await Promise.all([
+      api("/api/events"),
+      api("/api/admin/users"),
+      api("/api/admin/registrations")
+    ]);
+
+    allEvents = asArray(eventsData);
+    allParticipants = asArray(usersData);
+    allRegistrations = asArray(registrationsData);
+
+    $("#total-events").textContent = allEvents.length;
+
+    $("#total-participants").textContent =
+      allParticipants.filter(
+        user => (user.role || "participant") !== "admin"
+      ).length;
+
+    $("#total-registrations").textContent = allRegistrations.length;
+
+    $("#total-attendance").textContent =
+      allRegistrations.filter(
+        registration => registration.attendanceStatus === "attended"
+      ).length;
+
+    $("#dashboard-events").innerHTML = allEvents.length
+      ? allEvents.slice(0, 4).map(event => eventCard(event, false)).join("")
+      : '<div class="empty">No events have been created yet.</div>';
+  } catch (error) {
+    $("#dashboard-events").innerHTML =
+      `<div class="empty">${escapeHTML(error.message)}</div>`;
+  }
+}
+
+// EVENT CARD
+function eventCard(event, showActions = true) {
+  const capacity = Number(event.capacity || 0);
+  const registered = Number(event.registered || 0);
+
+  return `
+    <article class="event-card">
+      <span class="event-category">
+        ${escapeHTML(event.category || "General")}
+      </span>
+
+      <h3>${escapeHTML(event.title || "Untitled event")}</h3>
+
+      <p>
+        <strong>Date:</strong> ${escapeHTML(event.date || "Not set")}<br>
+        <strong>Time:</strong> ${escapeHTML(event.time || "Not set")}<br>
+        <strong>Location:</strong> ${escapeHTML(event.location || "Not set")}<br>
+        <strong>Registrations:</strong>
+        ${registered} / ${capacity || "Unlimited"}
+      </p>
+
+      <p>
+        ${escapeHTML(event.description || "No description provided.")}
+      </p>
+
+      ${showActions ? `
+        <div class="event-actions">
+          <button
+            type="button"
+            class="btn btn-dark"
+            data-edit-event="${escapeHTML(event.id)}">
+            Edit
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-danger"
+            data-delete-event="${escapeHTML(event.id)}">
+            Delete
+          </button>
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+// LOAD EVENTS
+async function loadEvents() {
+  const list = $("#events-list");
+
+  list.innerHTML = '<div class="empty">Loading events...</div>';
+
+  try {
+    allEvents = asArray(await api("/api/events"));
+    renderEvents();
+    showMessage("events-message", "");
+  } catch (error) {
+    list.innerHTML = '<div class="empty">Unable to load events.</div>';
+    showMessage("events-message", error.message, "error");
+  }
+}
+
+// RENDER EVENTS
+function renderEvents() {
+  const search = ($("#event-search").value || "")
+    .toLowerCase()
+    .trim();
+
+  const filtered = allEvents.filter(event =>
+    [
+      event.title,
+      event.category,
+      event.location,
+      event.description
+    ].some(value =>
+      String(value || "").toLowerCase().includes(search)
+    )
+  );
+
+  $("#events-list").innerHTML = filtered.length
+    ? filtered.map(event => eventCard(event, true)).join("")
+    : '<div class="empty">No matching events found.</div>';
+}
+
+$("#event-search").addEventListener("input", renderEvents);
+$("#refresh-events-btn").addEventListener("click", loadEvents);
+
+// EDIT AND DELETE EVENTS
+$("#events-list").addEventListener("click", async (event) => {
+  const editButton = event.target.closest("[data-edit-event]");
+  const deleteButton = event.target.closest("[data-delete-event]");
+
+  // EDIT EVENT: open the form instead of using prompt()
+  if (editButton) {
+    const eventId = editButton.dataset.editEvent;
+
+    const current = allEvents.find(
+      item => String(item.id) === String(eventId)
+    );
+
+    if (!current) {
+      alert("Event not found. Please refresh the events list.");
+      return;
+    }
+
+    openEventForm(current);
+    return;
+  }
+
+  // DELETE EVENT
+  if (deleteButton) {
+    const eventId = deleteButton.dataset.deleteEvent;
+
+    const current = allEvents.find(
+      item => String(item.id) === String(eventId)
+    );
+
+    if (!current) return;
+
+    if (!confirm(
+      `Delete "${current.title}"? This action cannot be undone.`
+    )) {
+      return;
+    }
+
+    try {
+      await api(`/api/events/${encodeURIComponent(eventId)}`, {
+        method: "DELETE"
+      });
+
+      showMessage(
+        "events-message",
+        "Event deleted successfully.",
+        "success"
+      );
+
+      await loadEvents();
+      await loadDashboard();
+    } catch (error) {
+      showMessage("events-message", error.message, "error");
+    }
+  }
+});
+
+// CREATE OR UPDATE EVENT
+$("#add-event-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const form = event.currentTarget;
+  const button = $("#save-event-btn");
+  const formData = new FormData(form);
+  const payload = Object.fromEntries(formData.entries());
+
+  payload.capacity = Number(payload.capacity);
+
+  // Validate required fields
+  if (
+    !String(payload.title || "").trim() ||
+    !String(payload.category || "").trim() ||
+    !String(payload.date || "").trim() ||
+    !String(payload.time || "").trim() ||
+    !String(payload.location || "").trim() ||
+    !Number.isInteger(payload.capacity) ||
+    payload.capacity < 1
+  ) {
+    showMessage(
+      "event-form-message",
+      "Please complete all required fields and enter a capacity of at least 1.",
+      "error"
+    );
+    return;
+  }
+
+  const isEditing = editingEventId !== null;
+
+  const url = isEditing
+    ? `/api/events/${encodeURIComponent(editingEventId)}`
+    : "/api/events";
+
+  const method = isEditing ? "PUT" : "POST";
+
+  button.disabled = true;
+  button.textContent = isEditing ? "Updating..." : "Saving...";
+
+  showMessage("event-form-message", "");
+
+  try {
+    await api(url, {
+      method,
+      body: JSON.stringify(payload)
+    });
+
+    // Reset edit mode after a successful request
+    editingEventId = null;
+
+    form.reset();
+
+    const capacityField = getEventField("capacity");
+    if (capacityField) capacityField.value = 100;
+
+    const heading = $("#event-form-title");
+
+    if (heading) heading.textContent = "Create New Event";
+
+    showMessage(
+      "event-form-message",
+      isEditing
+        ? "Event updated successfully!"
+        : "Event created successfully!",
+      "success"
+    );
+
+    await loadDashboard();
+
+    if (isEditing) {
+      setView("events");
+    }
+  } catch (error) {
+    showMessage("event-form-message", error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = editingEventId !== null
+      ? "Update Event"
+      : "Save Event";
+  }
+});
+
+// PARTICIPANTS
+function renderParticipants() {
+  const search = ($("#participant-search").value || "")
+    .toLowerCase()
+    .trim();
+
+  const filtered = allParticipants.filter(user => {
+    if ((user.role || "participant") === "admin") return false;
+
+    return [
+      user.name,
+      user.email,
+      user.student_id,
+      user.studentId,
+      user.role
+    ].some(value =>
+      String(value || "").toLowerCase().includes(search)
+    );
+  });
+
+  $("#participants-table").innerHTML = filtered.length
+    ? filtered.map(user => `
+        <tr>
+          <td>${escapeHTML(user.name || "—")}</td>
+          <td>${escapeHTML(user.email || "—")}</td>
+          <td>${escapeHTML(
+            user.student_id || user.studentId || "—"
+          )}</td>
+          <td>${escapeHTML(user.role || "participant")}</td>
+        </tr>
+      `).join("")
+    : '<tr><td colspan="4">No participants found.</td></tr>';
+}
+
+async function loadParticipants() {
+  try {
+    allParticipants = asArray(await api("/api/admin/users"));
+
+    renderParticipants();
+    showMessage("participants-message", "");
+  } catch (error) {
+    showMessage("participants-message", error.message, "error");
+
+    $("#participants-table").innerHTML =
+      '<tr><td colspan="4">Unable to load participants.</td></tr>';
+  }
+}
+
+$("#participant-search").addEventListener("input", renderParticipants);
+$("#refresh-participants-btn").addEventListener(
+  "click",
+  loadParticipants
+);
+
+// REGISTRATIONS
+function renderRegistrations() {
+  const search = ($("#registration-search").value || "")
+    .toLowerCase()
+    .trim();
+
+  const filtered = allRegistrations.filter(registration =>
+    [
+      registration.name,
+      registration.email,
+      registration.eventTitle,
+      registration.student_id,
+      registration.studentId
+    ].some(value =>
+      String(value || "").toLowerCase().includes(search)
+    )
+  );
+
+  $("#registrations-table").innerHTML = filtered.length
+    ? filtered.map(registration => `
+        <tr>
+          <td>${escapeHTML(registration.name || "—")}</td>
+          <td>${escapeHTML(registration.email || "—")}</td>
+          <td>${escapeHTML(registration.eventTitle || "—")}</td>
+          <td>${escapeHTML(registration.quantity ?? 1)}</td>
+          <td>${escapeHTML(registration.registeredAt || "—")}</td>
+        </tr>
+      `).join("")
+    : '<tr><td colspan="5">No registrations found.</td></tr>';
+}
+
+async function loadRegistrations() {
+  try {
+    allRegistrations = asArray(
+      await api("/api/admin/registrations")
+    );
+
+    renderRegistrations();
+    showMessage("registrations-message", "");
+  } catch (error) {
+    showMessage("registrations-message", error.message, "error");
+
+    $("#registrations-table").innerHTML =
+      '<tr><td colspan="5">Unable to load registrations.</td></tr>';
+  }
+}
+
+$("#registration-search").addEventListener(
+  "input",
+  renderRegistrations
+);
+
+$("#refresh-registrations-btn").addEventListener(
+  "click",
+  loadRegistrations
+);
+
+// ATTENDANCE
+function renderAttendance() {
+  const search = ($("#attendance-search").value || "")
+    .toLowerCase()
+    .trim();
+
+  const filtered = allRegistrations.filter(registration =>
+    [
+      registration.name,
+      registration.email,
+      registration.eventTitle
+    ].some(value =>
+      String(value || "").toLowerCase().includes(search)
+    )
+  );
+
+  $("#attendance-table").innerHTML = filtered.length
+    ? filtered.map(registration => {
+        const status = registration.attendanceStatus || "registered";
+
+        const statusClass = status === "attended"
+          ? "attended"
+          : status === "absent"
+            ? "absent"
+            : "";
+
+        const nextStatus = status === "attended"
+          ? "absent"
+          : "attended";
+
+        const buttonLabel = status === "attended"
+          ? "Mark Absent"
+          : "Mark Attended";
+
+        return `
+          <tr>
+            <td>${escapeHTML(registration.name || "—")}</td>
+            <td>${escapeHTML(registration.eventTitle || "—")}</td>
+            <td>
+              <span class="status ${statusClass}">
+                ${escapeHTML(status)}
+              </span>
+            </td>
+            <td>
+              <button
+                class="btn ${
+                  nextStatus === "attended"
+                    ? "btn-success"
+                    : "btn-danger"
+                }"
+                data-attendance-id="${escapeHTML(registration.id)}"
+                data-next-status="${nextStatus}">
+                ${buttonLabel}
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join("")
+    : '<tr><td colspan="4">No registrations found.</td></tr>';
+}
+
+async function loadAttendance() {
+  try {
+    allRegistrations = asArray(
+      await api("/api/admin/registrations")
+    );
+
+    renderAttendance();
+    showMessage("attendance-message", "");
+  } catch (error) {
+    showMessage("attendance-message", error.message, "error");
+
+    $("#attendance-table").innerHTML =
+      '<tr><td colspan="4">Unable to load attendance.</td></tr>';
+  }
+}
+
+$("#attendance-search").addEventListener(
+  "input",
+  renderAttendance
+);
+
+$("#refresh-attendance-btn").addEventListener(
+  "click",
+  loadAttendance
+);
+
+$("#attendance-table").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-attendance-id]");
+  if (!button) return;
+
+  try {
+    await api(
+      `/api/admin/registrations/${encodeURIComponent(
+        button.dataset.attendanceId
+      )}/attendance`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          status: button.dataset.nextStatus
+        })
+      }
+    );
+
+    showMessage(
+      "attendance-message",
+      "Attendance updated.",
+      "success"
+    );
+
+    await loadAttendance();
+    await loadDashboard();
+  } catch (error) {
+    showMessage("attendance-message", error.message, "error");
+  }
+});
+
+// LOGOUT
+$("#logout-btn").addEventListener("click", async () => {
+  if (!confirm("Are you sure you want to log out?")) return;
+
+  try {
+    await api("/api/admin/logout", {
+      method: "POST"
+    });
+
+    window.location.href = "/admin";
+  } catch (error) {
+    alert(error.message || "Unable to log out.");
+  }
+});
+
+// INITIAL LOAD
+loadDashboard();
+
+</script>
+</body>
+</html>

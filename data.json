@@ -1,0 +1,50 @@
+{
+  "events": [
+    {
+      "id": "ev002a72d702",
+      "title": "CCS NIGHT",
+      "category": "Meet up",
+      "date": "2026-12-29",
+      "time": "18:00",
+      "location": "AC",
+      "capacity": 100,
+      "registered": 2,
+      "description": "CCS night for ccs students.sss"
+    }
+  ],
+  "categories": [
+    "Meet up"
+  ],
+  "registrations": [
+    {
+      "id": "regdf9a56a896",
+      "eventId": "ev002a72d702",
+      "eventTitle": "CCS NIGHT",
+      "student_id": "0124-1097",
+      "name": "RAMOS_ JEWEL_MAY_M.",
+      "email": "cattojeymagda@gmail.com",
+      "quantity": 2,
+      "owner": "usr6173df90ca16",
+      "attendanceStatus": "absent",
+      "registeredAt": "2026-10-16T14:23:59.069385+00:00"
+    }
+  ],
+  "users": [
+    {
+      "id": "usrb8e8b1c13136",
+      "student_id": "0125-0174",
+      "name": "Abigail Odevilas",
+      "email": "odevilasa5@gmail.com",
+      "passwordHash": "scrypt:32768:8:1$aG1gmlkj7WoKRMvz$67e44729d11866721293ad160f287ae0fcdb0fc7e7fabd20ff9916c97d3be398d64f42bf90f72ee5868d95e0aa0f1e3e7ac213194f0f78cceaf4b95395eb439e",
+      "createdAt": "2026-10-16T12:14:46.733804+00:00"
+    },
+    {
+      "id": "usr6173df90ca16",
+      "student_id": "0124-1097",
+      "name": "RAMOS_ JEWEL_MAY_M.",
+      "email": "cattojeymagda@gmail.com",
+      "passwordHash": "scrypt:32768:8:1$UtUFnlyFZtEpsdgr$2ae39916d0159db34687bd0b2c20af1576f13f6649ee15897003b78524d4c27905c0c03ecdd52e93768d1808d3bc0fb142efcb01a943ee734e74cbe315f10569",
+      "createdAt": "2026-10-16T14:19:43.094274+00:00"
+    }
+  ]
+}
