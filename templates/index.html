@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,247 +6,110 @@
   <title>COLLEGE OF COMPUTER STUDIES | Event Hub</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 
 <body class="app-body">
-  <button
-    type="button"
-    id="open-admin-login"
-    style="
-      position: fixed;
-      top: 20px;
-      right: 24px;
-      z-index: 1000;
-      background: white;
-      color: black;
-      border: none;
-      border-radius: 8px;
-      padding: 12px 18px;
-      font-weight: 700;
-      cursor: pointer;
-    "
-  >
-    🛡 Admin Login
-  </button>
-<div
-  id="admin-login-modal"
-  hidden
-  style="
-    position: fixed;
-    inset: 0;
-    z-index: 2000;
-    background: rgba(20, 5, 30, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  "
->
-  <div
-    style="
-      background: white;
-      color: #210B2C;;
-      width: 100%;
-      max-width: 400px;
-      padding: 30px;
-      border-radius: 14px;
-      box-sizing: border-box;
-      border: 1px solid #877d7d;
-    "
-  >
-    <button
-      type="button"
-      id="close-admin-login"
-      style="
-        float: right;
-        background: none;
-        color: #ffffff;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-      "
-      aria-label="Close admin login"
-    >×</button>
 
-    <p
-      style="
-        color: #000000;
-        font-size: 12px;
-        letter-spacing: 2px;
-      "
-    >
-      COLLEGE OF COMPUTER STUDIES
-    </p>
+  <!-- Sign in for everyone: admins and participants use this one form -->
+  <section id="auth-view">
+    <div class="login-shell">
 
-    <h2 style="color: #210B2C;">
-      Administrator Login
-    </h2>
-
-    <p style="color: #000000;">
-      Sign in to manage the event system.
-    </p>
-
-    <form id="admin-login-form">
-      <label
-        for="admin-email"
-        style="
-          display: block;
-          color: #ffffff;
-          margin-bottom: 6px;
-        "
-      >
-        Admin Email
-      </label>
-
-      <input
-        id="admin-email"
-        type="email"
-        required
-        autocomplete="username"
-        placeholder="Administrator email"
-        style="
-          display: block;
-          box-sizing: border-box;
-          width: 100%;
-          margin: 8px 0 18px;
-          padding: 12px;
-          border-radius: 6px;
-          border: 1px solid #877d7d;
-          background: #ffffff;
-          color: #1d2733;
-        "
-      >
-
-      <label
-        for="admin-password"
-        style="
-          display: block;
-          color: #ffffff;
-          margin-bottom: 6px;
-        "
-      >
-        Password
-      </label>
-
-      <input
-        id="admin-password"
-        type="password"
-        required
-        autocomplete="current-password"
-        placeholder="Enter admin password"
-        style="
-          display: block;
-          box-sizing: border-box;
-          width: 100%;
-          margin: 8px 0 18px;
-          padding: 12px;
-          border-radius: 6px;
-          border: 1px solid #877d7d;
-          background: #ffffff;
-          color: #1d2733;
-        "
-      >
-
-      <p
-        id="admin-login-error"
-        role="alert"
-        style="
-          color: #ffb3b3;
-        "
-        hidden
-      ></p>
-
-      <button
-        type="submit"
-        style="
-          width: 100%;
-          padding: 13px;
-          background: #877d7d;
-          color: #ffffff;
-          border: none;
-          border-radius: 7px;
-          font-weight: 700;
-          cursor: pointer;
-        "
-      >
-        LOGIN AS ADMIN
-      </button>
-    </form>
-  </div>
-</div>
-
-  <!-- Participant Authentication -->
-  <section id="auth-view" class="auth-screen">
-    <div class="auth-card">
-      <div class="sidebar-logo">C</div>
-      <p class="eyebrow">COLLEGE OF COMPUTER STUDIES</p>
-      <h1 id="auth-title">Welcome Back<span>.</span></h1>
-      <p id="auth-subtitle">Log in to discover and register for events.</p>
-
-      <div class="tabbar">
-        <button type="button" class="tab active" id="login-tab">LOGIN</button>
-        <button type="button" class="tab" id="signup-tab">SIGN UP</button>
+      <!-- Left: plain violet panel (no art) -->
+      <div class="login-art">
+        <div class="login-art-content">
+          <div class="login-brand">
+            <div class="login-logo">C</div>
+            <span>College of Computer Studies<br>Event Hub</span>
+          </div>
+          <h2 id="art-title">Welcome back!</h2>
+          <p id="art-text">You can sign in to access your existing account and join school events.</p>
+        </div>
       </div>
 
-      <form id="auth-form">
-        <div class="field" id="student-id-field" hidden>
-          <label for="auth-student-id">Student ID Number</label>
-          <input
-            id="auth-student-id"
-            name="student_id"
-            autocomplete="off"
-            placeholder="Enter your student ID"
-            maxlength="50"
-          >
+      <!-- Right: form panel -->
+      <div class="login-panel">
+        <h1 id="auth-title">Sign In<span>.</span></h1>
+        <p id="auth-subtitle">Log in to discover and register for events.</p>
+
+        <div class="tabbar">
+          <button type="button" class="tab active" id="login-tab">LOGIN</button>
+          <button type="button" class="tab" id="signup-tab">SIGN UP</button>
         </div>
 
-        <div class="field" id="name-field" hidden>
-          <label for="auth-name">Full Name</label>
-          <input
-            id="auth-name"
-            name="name"
-            autocomplete="name"
-            placeholder="Enter your full name"
-            maxlength="100"
-          >
-        </div>
+        <form id="auth-form">
+          <div class="field" id="student-id-field" hidden>
+            <label for="auth-student-id">Student ID Number</label>
+            <svg class="field-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm4 3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm-4.5 9h9c0-2-2-3.5-4.5-3.5S3.5 15 3.5 17zM14 9v1.5h6V9h-6zm0 3v1.5h6V12h-6z"/></svg>
+            <input
+              id="auth-student-id"
+              name="student_id"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="Student ID number"
+              maxlength="50"
+            >
+          </div>
 
-        <div class="field">
-          <label for="auth-email">Email Address</label>
-          <input
-            id="auth-email"
-            name="email"
-            type="email"
-            autocomplete="email"
-            required
-            maxlength="254"
-            placeholder="you@example.com"
-          >
-        </div>
+          <div class="field" id="name-field" hidden>
+            <label for="auth-name">Full Name</label>
+            <svg class="field-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.4 0-8 2.2-8 5v3h16v-3c0-2.8-3.6-5-8-5z"/></svg>
+            <input
+              id="auth-name"
+              name="name"
+              autocomplete="name"
+              placeholder="Full name"
+              maxlength="100"
+            >
+          </div>
 
-        <div class="field">
-          <label for="auth-password">Password</label>
-          <input
-            id="auth-password"
-            name="password"
-            type="password"
-            autocomplete="current-password"
-            required
-            minlength="8"
-            placeholder="At least 8 characters"
-          >
-        </div>
+          <div class="field">
+            <label for="auth-email">Email Address</label>
+            <svg class="field-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.4 0-8 2.2-8 5v3h16v-3c0-2.8-3.6-5-8-5z"/></svg>
+            <input
+              id="auth-email"
+              name="email"
+              type="email"
+              autocomplete="username"
+              required
+              maxlength="254"
+              placeholder="Email address"
+            >
+          </div>
 
-        <div id="auth-error" class="form-err" hidden></div>
-        <button type="submit" class="btn btn-gold submit-btn" id="auth-submit">
-          Login
-        </button>
-      </form>
+          <div class="field">
+            <label for="auth-password">Password</label>
+            <svg class="field-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17 9V7a5 5 0 0 0-10 0v2H5v13h14V9h-2zm-8-2a3 3 0 0 1 6 0v2H9V7z"/></svg>
+            <input
+              id="auth-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              minlength="8"
+              placeholder="Password (at least 8 characters)"
+            >
+          </div>
 
-      <p class="auth-note">
-        Participant access only. Admins should use the separate admin login.
-      </p>
+          <div class="login-options" id="login-options">
+            <button type="button" class="forgot-link" id="forgot-btn">Forgot password?</button>
+          </div>
+
+          <div id="auth-error" class="form-err" hidden></div>
+          <button type="submit" class="btn btn-gold submit-btn" id="auth-submit">
+            Login
+          </button>
+        </form>
+
+        <p class="auth-switch">
+          <span id="auth-switch-text">New here?</span>
+          <button type="button" id="auth-switch-btn">Create an Account</button>
+        </p>
+      </div>
+
     </div>
   </section>
 
@@ -265,6 +127,9 @@
       <div class="sidebar-label">PARTICIPANT MENU</div>
 
       <nav class="sidebar-nav">
+        <button class="side-link" data-tab="profile">
+          <span class="side-icon">♙</span><span>My Profile</span>
+        </button>
         <button class="side-link active" data-tab="dashboard">
           <span class="side-icon">◫</span><span>Dashboard</span>
         </button>
@@ -274,16 +139,13 @@
         <button class="side-link" data-tab="mine">
           <span class="side-icon">▤</span><span>My Registrations</span>
         </button>
-        <button class="side-link" data-tab="profile">
-          <span class="side-icon">♙</span><span>My Profile</span>
-        </button>
         <button class="side-link" data-tab="attended">
           <span class="side-icon">✓</span><span>Attended Events</span>
         </button>
       </nav>
 
       <div class="sidebar-bottom">
-        <div class="sidebar-bottom-mark">G</div>
+        <div class="sidebar-bottom-mark">C</div>
         <div>
           <strong>YOUR NEXT EVENT</strong>
           <span>Starts here.</span>
@@ -331,7 +193,7 @@
             <article class="dashboard-card">
               <div class="stat-card-top"><span class="stat-card-icon">▦</span><span class="stat-card-label">EVENTS</span></div>
               <div class="stat-card-number" id="stat-events">0</div>
-              <div class="stat-card-footer">Events available</div>
+              <div class="stat-card-footer">Upcoming events available</div>
             </article>
             <article class="dashboard-card">
               <div class="stat-card-top"><span class="stat-card-icon">✓</span><span class="stat-card-label">REGISTRATIONS</span></div>
@@ -406,5 +268,6 @@
   <div id="toast-root"></div>
 
   <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+
 </body>
 </html>

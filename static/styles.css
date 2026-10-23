@@ -922,68 +922,99 @@ input[readonly] {
   color: var(--navy);
   border-bottom-color: var(--navy);
 }
-/* ----- auth screen ----- */
-.auth-screen {
-  min-height: 100vh;
+
+/* ----- toast notifications (top right, stacked) ----- */
+#toast-root {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+  max-width: 380px;
+  padding: 14px 16px;
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--green);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(33, 11, 44, .25);
+  animation: toast-in .25s ease-out;
+}
+
+.toast.error {
+  border-left-color: var(--red);
+}
+
+.toast.leaving {
+  animation: toast-out .25s ease-in forwards;
+}
+
+.toast-icon {
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: linear-gradient(135deg, var(--navy), var(--accent));
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e2f3e8;
+  color: var(--green);
+  font-size: .8rem;
+  font-weight: 700;
 }
-.auth-card {
-  width: 100%;
-  max-width: 430px;
-  padding: 32px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 20px 50px rgba(33, 11, 44, .3);
+
+.toast.error .toast-icon {
+  background: #fbe6e3;
+  color: var(--red);
 }
-.auth-card > .sidebar-logo {
-  margin-bottom: 20px;
-}
-.auth-card h1 {
-  margin: 8px 0;
-  font-size: 2rem;
-}
-.auth-card h1 span {
-  color: var(--accent);
-}
-.auth-card > p:not(.eyebrow) {
-  color: var(--muted);
-  font-size: .9rem;
-}
-.auth-card .tabbar {
-  margin: 22px 0 18px;
-  border-bottom: 1px solid var(--line);
-}
-.auth-card .tab {
+
+.toast-text {
   flex: 1;
-  padding: 12px 8px;
-}
-.auth-card .submit-btn {
-  margin-top: 8px;
-}
-.auth-note {
-  margin-top: 20px;
-  text-align: center;
-  font-size: .85rem !important;
-}
-/* ----- toast / spinner ----- */
-.toast {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #fff;
-  border: 1px solid var(--navy);
-  color: var(--ink);
-  padding: 10px 18px;
-  border-radius: 6px;
+  min-width: 0;
   font-size: .9rem;
-  z-index: 100;
-  box-shadow: 0 10px 24px rgba(33, 11, 44, .2);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
+
+.toast-close {
+  background: none;
+  color: var(--muted);
+  padding: 4px 6px;
+  font-size: .9rem;
+  line-height: 1;
+}
+
+.toast-close:hover {
+  background: var(--page);
+  color: var(--navy);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out {
+  to { opacity: 0; transform: translateX(30px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast.leaving {
+    animation-duration: .01s;
+  }
+}
+
 .loading-spin {
   width: 16px;
   height: 16px;
@@ -1082,5 +1113,358 @@ input[readonly] {
   }
   .search {
     width: 100%;
+  }
+  #toast-root {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+  }
+  .toast {
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+/* =====================================================================
+   SIGN IN — styled to match the participant dashboard
+   Palette: dark plum, cream, gold, and subtle wisteria.
+   ===================================================================== */
+#auth-view {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  font-family: "Montserrat", "Segoe UI", Arial, sans-serif;
+  background: var(--page, #F6F1E8);
+  color: var(--ink, #210B2C);
+}
+
+#auth-view .login-shell {
+  margin: auto;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  max-width: 1000px;
+  min-height: 540px;
+  background: #FFFFFF;
+  border: 1px solid var(--line, #DCCBEF);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 48px rgba(33, 11, 44, 0.12);
+}
+
+/* Left panel: plain solid violet, no artwork */
+#auth-view .login-art {
+  position: relative;
+  display: flex;
+  flex: 1.15 1 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 48px 48px 68px;
+  color: #FFFFFF;
+  background: var(--navy, #210B2C);
+  overflow: hidden;
+}
+
+#auth-view .login-art-content {
+  position: relative;
+  z-index: 1;
+}
+
+#auth-view .login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1.6;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+#auth-view .login-logo {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--gold, #FFD166);
+  color: var(--navy, #210B2C);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+}
+
+#auth-view .login-art h2,
+#auth-view #art-title {
+  margin: 0 0 12px;
+  font-family: inherit;
+  font-size: 2.4rem;
+  line-height: 1.15;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+#auth-view .login-art p,
+#auth-view #art-text {
+  margin: 0;
+  max-width: 320px;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: #F6F1E8;
+}
+
+/* Right panel: clean white surface with dashboard plum text */
+#auth-view .login-panel {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px 54px;
+  background: #FFFFFF;
+  color: var(--ink, #210B2C);
+}
+
+#auth-view .login-panel #auth-title {
+  margin: 0 0 6px;
+  font-family: inherit;
+  font-size: 2.3rem;
+  font-weight: 700;
+  color: var(--navy, #210B2C);
+}
+
+#auth-view .login-panel #auth-title span {
+  color: var(--gold, #FFD166);
+}
+
+#auth-view .login-panel #auth-subtitle {
+  margin: 0 0 24px;
+  font-size: 0.92rem;
+  color: var(--muted, #715A88);
+}
+
+/* Keep script-controlled tabs in the DOM but visually hidden */
+#auth-view .login-panel .tabbar {
+  display: none;
+}
+
+#auth-view #auth-form .field {
+  position: relative;
+  margin: 0 0 14px;
+}
+
+#auth-view #auth-form .field label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+#auth-view #auth-form .field .field-icon {
+  position: absolute;
+  top: 50%;
+  left: 20px;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: #715A88;
+  pointer-events: none;
+}
+
+#auth-view #auth-form .field input {
+  display: block;
+  width: 100%;
+  height: 52px;
+  margin: 0;
+  padding: 0 20px 0 48px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--ink, #210B2C);
+  background: #FFFFFF;
+  border: 1px solid var(--line, #DCCBEF);
+  border-radius: 999px;
+}
+
+#auth-view #auth-form .field input::placeholder {
+  color: #9B8AA8;
+}
+
+#auth-view #auth-form .field input:focus {
+  outline: 3px solid rgba(188, 150, 230, 0.25);
+  outline-offset: 1px;
+  border-color: var(--accent, #BC96E6);
+}
+
+#auth-view .login-options {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 2px 0 22px;
+  font-size: 0.8rem;
+  color: var(--ink, #210B2C);
+}
+
+#auth-view .login-options .remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--ink, #210B2C);
+  cursor: pointer;
+}
+
+#auth-view .login-options .remember input {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--navy, #210B2C);
+  cursor: pointer;
+}
+
+#auth-view .login-options .forgot-link {
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--navy, #210B2C);
+  background: none;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+#auth-view .login-options .forgot-link:hover {
+  background: none;
+  color: var(--muted, #715A88);
+  text-decoration: underline;
+}
+
+#auth-view #auth-form .form-err {
+  margin: 0 0 14px;
+  padding: 10px 16px;
+  font-size: 0.88rem;
+  border-radius: 10px;
+}
+
+#auth-view #auth-form #auth-submit {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  padding: 0 18px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--gold, #FFD166);
+  cursor: pointer;
+  background: var(--navy, #210B2C);
+  border: 1px solid var(--navy, #210B2C);
+  border-radius: 999px;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+#auth-view #auth-form #auth-submit:hover {
+  background: #351442;
+  transform: translateY(-1px);
+}
+
+#auth-view #auth-form #auth-submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+  transform: none;
+}
+
+#auth-view #auth-form #auth-submit:focus-visible {
+  outline: 3px solid var(--gold, #FFD166);
+  outline-offset: 3px;
+}
+
+#auth-view .auth-switch {
+  margin: 22px 0 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted, #715A88);
+}
+
+#auth-view .auth-switch button {
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  color: var(--navy, #210B2C);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+#auth-view .auth-switch button:hover {
+  background: none;
+  color: var(--muted, #715A88);
+  text-decoration: underline;
+}
+
+/* Responsive login layout */
+@media (max-width: 800px) {
+  #auth-view .login-shell {
+    flex-direction: column;
+    max-width: 500px;
+    min-height: 0;
+  }
+  #auth-view .login-art {
+    flex: none;
+    min-height: 280px;
+    padding: 32px;
+  }
+  #auth-view .login-brand {
+    margin-bottom: 18px;
+  }
+  #auth-view .login-art h2,
+  #auth-view #art-title {
+    font-size: 1.8rem;
+  }
+  #auth-view .login-art p,
+  #auth-view #art-text {
+    font-size: 0.95rem;
+  }
+  #auth-view .login-panel {
+    flex: none;
+    padding: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  #auth-view {
+    align-items: flex-start;
+    padding: 12px;
+  }
+  #auth-view .login-art {
+    min-height: 240px;
+    padding: 28px 24px 32px;
+  }
+  #auth-view .login-panel {
+    padding: 28px 24px 32px;
+  }
+  #auth-view .login-panel #auth-title {
+    font-size: 2rem;
+  }
+  #auth-view .login-options {
+    align-items: flex-start;
   }
 }

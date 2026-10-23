@@ -1,4 +1,3 @@
-
 (() => {
   'use strict';
 
@@ -13,6 +12,32 @@
   let searchTerm = '';
   let activeTab = 'dashboard';
 
+  // ----- input rules -----
+  // Student ID: numbers only (hyphens allowed, e.g. 2023-00123).
+  // Name: letters only (spaces, periods, apostrophes and hyphens allowed).
+  const STUDENT_ID_RE = /^\d+(?:-\d+)*$/;
+  const NAME_RE = /^\p{L}+(?:[ .'’\-]+\p{L}+)*\.?$/u;
+
+  const STUDENT_ID_MESSAGE =
+    'Student ID can only contain numbers (and hyphens).';
+  const NAME_MESSAGE =
+    'Name can only contain letters, spaces, periods, apostrophes and hyphens.';
+
+  // Remove wrong characters while the user types or pastes.
+  document.addEventListener('input', (event) => {
+    const field = event.target;
+
+    if (!field || !field.id) return;
+
+    if (field.id === 'auth-student-id') {
+      field.value = field.value.replace(/[^0-9-]/g, '');
+    }
+
+    if (field.id === 'auth-name' || field.id === 'registration-name') {
+      field.value = field.value.replace(/[0-9_]|[^\p{L} .'’\-]/gu, '');
+    }
+  });
+
   async function api(path, options = {}) {
     const response = await fetch(path, {
       credentials: 'same-origin',
@@ -26,7 +51,7 @@
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 && path !== '/api/auth/login') {
         showAuth();
       }
 
@@ -60,122 +85,159 @@
     });
   }
 
-  function showToast(message) {
-    const root = $('#toast-root');
-    root.innerHTML = `<div class="toast">${escapeHtml(message)}</div>`;
+  // An event is finished when the server says so (marked done by the admin
+  // or its date/time has passed). The date check is only a fallback.
+  function isEventFinished(event) {
+    if (!event) return false;
 
-    window.setTimeout(() => {
-      root.innerHTML = '';
-    }, 2800);
+    if (typeof event.isFinished === 'boolean') {
+      return event.isFinished;
+    }
+
+    const when = new Date(`${event.date}T${event.time || '23:59'}`);
+
+    return !Number.isNaN(when.getTime()) && when < new Date();
+  }
+
+  // Course, section, year level and attendance answer of a registration.
+  function registrationDetails(registration) {
+    const classInfo = [
+      registration.course,
+      registration.section,
+      registration.year
+    ].filter(Boolean).join(' · ');
+
+    const attending =
+      `Attending: ${registration.attending === 'no' ? 'No' : 'Yes'}`;
+
+    return classInfo ? `${classInfo} · ${attending}` : attending;
+  }
+
+  // ----- toast notifications -----
+  // type: "success" (green) or "error" (red). Toasts stack at the top right.
+  function showToast(message, type = 'success', duration = 4000) {
+    const root = $('#toast-root');
+    if (!root) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast' + (type === 'error' ? ' error' : '');
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.textContent = type === 'error' ? '✕' : '✓';
+
+    const text = document.createElement('span');
+    text.className = 'toast-text';
+    text.textContent = message;
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'toast-close';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '✕';
+
+    toast.append(icon, text, close);
+    root.appendChild(toast);
+
+    let timer;
+    const dismiss = () => {
+      clearTimeout(timer);
+      toast.classList.add('leaving');
+      toast.addEventListener('animationend', () => toast.remove(), { once: true });
+    };
+
+    close.addEventListener('click', dismiss);
+    timer = setTimeout(dismiss, duration);
   }
 
   function showAuth() {
     $('#auth-view').hidden = false;
     $('#participant-app').hidden = true;
     $('#modal-root').innerHTML = '';
-
-    // Show Admin Login on the public login/sign-up screen
-    $('#open-admin-login').hidden = false;
   }
 
   function showApp() {
     $('#auth-view').hidden = true;
     $('#participant-app').hidden = false;
     $('#header-user').textContent = currentUser?.name || '';
-
-    // Hide Admin Login when a participant is logged in
-    $('#open-admin-login').hidden = true;
-
-    // Close the admin login modal if it is open
-    $('#admin-login-modal').hidden = true;
   }
 
+  // ----- sign in / sign up screen -----
   function setAuthMode(mode) {
     authMode = mode;
 
-    const isSignup = mode === "signup";
+    const isSignup = mode === 'signup';
 
-    // Update active tab
-    document.getElementById("login-tab").classList.toggle("active", !isSignup);
-    document.getElementById("signup-tab").classList.toggle("active", isSignup);
+    // Tabs (hidden by CSS, kept in sync anyway)
+    $('#login-tab').classList.toggle('active', !isSignup);
+    $('#signup-tab').classList.toggle('active', isSignup);
 
-    // Show or hide fields
-    document.getElementById("student-id-field").hidden = !isSignup;
-    document.getElementById("name-field").hidden = !isSignup;
+    // Extra sign-up fields
+    $('#student-id-field').hidden = !isSignup;
+    $('#name-field').hidden = !isSignup;
+    $('#auth-student-id').required = isSignup;
+    $('#auth-name').required = isSignup;
 
-    document.getElementById("auth-student-id").required = isSignup;
-    document.getElementById("auth-name").required = isSignup;
+    // Remember me / forgot password only make sense when logging in
+    $('#login-options').hidden = isSignup;
 
-    // Change button label
-    document.getElementById("auth-submit").textContent =
-      isSignup ? "Create Account" : "Log In";
+    // Password autocomplete hint
+    $('#auth-password').autocomplete = isSignup
+      ? 'new-password'
+      : 'current-password';
 
-    // Clear previous form values when switching modes
-    document.getElementById("auth-form").reset();
+    // Texts
+    $('#auth-title').innerHTML = isSignup
+      ? 'Sign Up<span>.</span>'
+      : 'Sign In<span>.</span>';
 
-    // Clear old error messages
-    document.getElementById("auth-error").textContent = "";
+    $('#auth-subtitle').textContent = isSignup
+      ? 'Create an account to register for events.'
+      : 'Log in to discover and register for events.';
+
+    $('#art-title').textContent = isSignup ? 'Hello there!' : 'Welcome back!';
+
+    $('#art-text').textContent = isSignup
+      ? 'Create a free account to discover and join school events.'
+      : 'You can sign in to access your existing account and join school events.';
+
+    $('#auth-submit').textContent = isSignup ? 'Create Account' : 'Login';
+
+    $('#auth-switch-text').textContent = isSignup
+      ? 'Already registered?'
+      : 'New here?';
+
+    $('#auth-switch-btn').textContent = isSignup
+      ? 'Log in'
+      : 'Create an Account';
+
+    // Clear previous values and errors when switching modes
+    $('#auth-form').reset();
+    $('#auth-error').textContent = '';
+    $('#auth-error').hidden = true;
   }
 
   $('#login-tab').addEventListener('click', () => setAuthMode('login'));
   $('#signup-tab').addEventListener('click', () => setAuthMode('signup'));
-  const adminModal = $('#admin-login-modal');
-  const adminForm = $('#admin-login-form');
-  const adminError = $('#admin-login-error');
-  const adminOpenButton = $('#open-admin-login');
-  const adminCloseButton = $('#close-admin-login');
 
-  adminOpenButton.addEventListener('click', () => {
-    adminModal.hidden = false;
-    adminError.hidden = true;
-    adminForm.reset();
+  $('#auth-switch-btn').addEventListener('click', () => {
+    setAuthMode(authMode === 'signup' ? 'login' : 'signup');
   });
 
-  adminCloseButton.addEventListener('click', () => {
-    adminModal.hidden = true;
+  $('#forgot-btn').addEventListener('click', () => {
+    showToast('Please contact your administrator to reset your password.');
   });
 
-  adminModal.addEventListener('click', (event) => {
-    if (event.target === adminModal) {
-      adminModal.hidden = true;
-    }
-  });
+  // Show the number keypad on phones for the Student ID box.
+  $('#auth-student-id').setAttribute('inputmode', 'numeric');
 
-  adminForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-
-    const submitButton = adminForm.querySelector(
-      'button[type="submit"]'
-    );
-
-    const email = $('#admin-email').value.trim();
-    const password = $('#admin-password').value;
-
-    adminError.hidden = true;
-    submitButton.disabled = true;
-    submitButton.textContent = 'PLEASE WAIT...';
-
-    try {
-      await api('/api/auth/admin-login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password })
-      });
-
-      // The server has accepted the admin login.
-      window.location.href = '/admin';
-    } catch (error) {
-      adminError.textContent = error.message;
-      adminError.hidden = false;
-    } finally {
-      submitButton.disabled = false;
-      submitButton.textContent = 'LOGIN AS ADMIN';
-    }
-  });
   $('#auth-form').addEventListener('submit', async (event) => {
     event.preventDefault();
 
     const error = $('#auth-error');
     const button = $('#auth-submit');
+    const submittedMode = authMode;
 
     error.hidden = true;
     button.disabled = true;
@@ -187,9 +249,19 @@
     const password = $('#auth-password').value;
 
     try {
-      if (authMode === 'signup') {
+      // ===== SIGN UP: create the account, then go to the sign-in form =====
+      if (submittedMode === 'signup') {
         if (!studentId || !name || !email || !password) {
           throw new Error('Please complete all required fields.');
+        }
+
+        // Student ID must be numbers only; name must have no numbers.
+        if (!STUDENT_ID_RE.test(studentId)) {
+          throw new Error(STUDENT_ID_MESSAGE);
+        }
+
+        if (!NAME_RE.test(name)) {
+          throw new Error(NAME_MESSAGE);
         }
 
         await api('/api/auth/register', {
@@ -201,17 +273,40 @@
             password
           })
         });
-      } else {
-        await api('/api/auth/login', {
-          method: 'POST',
-          body: JSON.stringify({ email, password })
-        });
+
+        // If the server signs the new user in automatically, end that
+        // session so the person must log in on their own.
+        try {
+          await api('/api/auth/logout', { method: 'POST', body: '{}' });
+        } catch (ignored) {
+          // No session to end; nothing to do.
+        }
+
+        // Switch to the sign-in form and keep the email filled in.
+        setAuthMode('login');
+        $('#auth-email').value = email;
+        $('#auth-password').focus();
+
+        showToast('Account created successfully! Please sign in.');
+        return;
       }
+
+      // ===== LOGIN =====
+      await api('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
 
       const userData = await api('/api/auth/me');
 
+      // Admins use the same form and are sent to the admin page.
+      if (userData.role === 'admin') {
+        window.location.href = '/admin';
+        return;
+      }
+
       if (userData.role !== 'participant' || !userData.user) {
-        throw new Error('This page is for participant accounts only.');
+        throw new Error('This account cannot sign in here.');
       }
 
       currentUser = userData.user;
@@ -221,22 +316,16 @@
       showApp();
       renderAll();
 
-      showToast(
-        authMode === 'signup'
-          ? 'Account created successfully!'
-          : 'Welcome back!'
-      );
+      showToast(`Login successful! Welcome, ${currentUser.name || 'participant'}.`);
 
-      $('#auth-form').reset();
       setAuthMode('login');
     } catch (err) {
       error.textContent = err.message;
       error.hidden = false;
+      showToast(err.message, 'error');
     } finally {
       button.disabled = false;
-      button.textContent = authMode === 'signup'
-        ? 'Create Account'
-        : 'Login';
+      button.textContent = authMode === 'signup' ? 'Create Account' : 'Login';
     }
   });
 
@@ -247,19 +336,20 @@
         body: '{}'
       });
     } catch (error) {
-      showToast(error.message);
+      showToast(error.message, 'error');
+      return;
     }
 
     currentUser = null;
     events = [];
     registrations = [];
     categories = [];
+    activeTab = 'dashboard';
 
     showAuth();
-    $('#auth-form').reset();
     setAuthMode('login');
 
-    showToast('You have logged out.');
+    showToast('You have been logged out successfully.');
   });
 
   async function loadData() {
@@ -274,8 +364,11 @@
     registrations = Array.isArray(registrationData) ? registrationData : [];
   }
 
+  // Browse Events shows upcoming events only.
   function getFilteredEvents() {
     return events.filter((event) => {
+      if (isEventFinished(event)) return false;
+
       const categoryMatches =
         activeCategory === 'All' || event.category === activeCategory;
 
@@ -295,11 +388,21 @@
     const registered = Number(event.registered || 0);
     const capacity = Number(event.capacity || 0);
     const spots = Math.max(0, capacity - registered);
+    const finished = isEventFinished(event);
     const full = spots <= 0;
 
+    const stubPrice = finished ? 'ENDED' : (full ? 'FULL' : 'FREE');
+    const stubSpots = finished
+      ? 'Registration closed'
+      : (full ? 'No spots left' : `${spots} spots left`);
+    const badge = finished
+      ? 'EVENT FINISHED'
+      : (full ? 'FULLY BOOKED' : 'REGISTER NOW');
+
     return `
-      <article class="ticket-card ${full ? 'sold-out' : ''}"
-        data-event-id="${escapeHtml(event.id)}">
+      <article class="ticket-card ${full || finished ? 'sold-out' : ''}"
+        data-event-id="${escapeHtml(event.id)}"
+        ${finished ? 'data-finished="true"' : ''}>
         <div class="ticket-main">
           <span class="cat-tag">${escapeHtml(event.category || 'Event')}</span>
           <h3 class="ticket-title">${escapeHtml(event.title)}</h3>
@@ -311,16 +414,19 @@
         </div>
         <div class="ticket-stub">
           <div class="stub-label">REGISTRATION</div>
-          <div class="stub-price">${full ? 'FULL' : 'FREE'}</div>
-          <div class="stub-spots">${full ? 'No spots left' : `${spots} spots left`}</div>
-          <div class="admit-badge">${full ? 'FULLY BOOKED' : 'RESERVE SPOT'}</div>
+          <div class="stub-price">${stubPrice}</div>
+          <div class="stub-spots">${stubSpots}</div>
+          <div class="admit-badge">${badge}</div>
         </div>
       </article>
     `;
   }
 
   function renderStats() {
-    $('#stat-events').textContent = events.length;
+    // Only upcoming events count as "available".
+    $('#stat-events').textContent = events.filter(
+      event => !isEventFinished(event)
+    ).length;
 
     $('#stat-registrations').textContent = events.reduce(
       (total, event) => total + Number(event.registered || 0),
@@ -365,7 +471,15 @@
           item => item.id === card.dataset.eventId
         );
 
-        if (selectedEvent) openRegistrationModal(selectedEvent);
+        if (!selectedEvent) return;
+
+        // Finished events cannot be opened.
+        if (isEventFinished(selectedEvent)) {
+          showToast('This event has already finished.', 'error');
+          return;
+        }
+
+        openRegistrationModal(selectedEvent);
       });
     });
   }
@@ -384,10 +498,9 @@
   }
 
   function renderDashboard() {
+    // Featured Events: upcoming only.
     const upcoming = events
-      .filter(event =>
-        !event.date || new Date(`${event.date}T23:59:59`) >= new Date()
-      )
+      .filter(event => !isEventFinished(event))
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .slice(0, 3);
 
@@ -408,7 +521,7 @@
           <div class="my-ticket-row">
             <div>
               <div class="mt-title">${escapeHtml(registration.eventTitle || 'Event')}</div>
-              <div class="mt-sub">Quantity: ${Number(registration.quantity || 1)}</div>
+              <div class="mt-sub">${escapeHtml(registrationDetails(registration))}</div>
             </div>
             <span class="attendance-status">
               ${escapeHtml(registration.attendanceStatus || 'registered').toUpperCase()}
@@ -434,7 +547,14 @@
           registration.attendanceStatus || 'registered'
         ).toLowerCase();
 
-        const canCancel = status !== 'attended' && status !== 'absent';
+        // The "absent" label is not shown in My Registrations.
+        const showStatus = status !== 'absent';
+
+        // No cancelling once attended, marked absent, or the event finished.
+        const canCancel =
+          status !== 'attended' &&
+          status !== 'absent' &&
+          !isEventFinished(event);
 
         return `
             <div class="my-ticket-row">
@@ -442,25 +562,28 @@
                 <div class="mt-title">
                   ${escapeHtml(registration.eventTitle || event?.title || 'Event')}
                 </div>
+                <div class="mt-sub">${escapeHtml(date)}</div>
                 <div class="mt-sub">
-                  ${escapeHtml(date)} · Qty ${Number(registration.quantity || 1)}
+                  ${escapeHtml(registrationDetails(registration))}
                 </div>
-                <div class="attendance-status">${escapeHtml(status.toUpperCase())}</div>
+                ${showStatus
+            ? `<div class="attendance-status">${escapeHtml(status.toUpperCase())}</div>`
+            : ''}
               </div>
               ${canCancel ? `
                 <button type="button" class="btn btn-ghost"
                   data-cancel-id="${escapeHtml(registration.id)}">
-                  Cancel Reservation
+                  Cancel Registration
                 </button>
               ` : ''}
             </div>
           `;
       }).join('')
-      : '<div class="empty-state">No registrations yet. Browse events to reserve a free spot.</div>';
+      : '<div class="empty-state">No registrations yet. Browse events to register for a free spot.</div>';
 
     $('#mine-list').querySelectorAll('[data-cancel-id]').forEach(button => {
       button.addEventListener('click', async () => {
-        if (!confirm('Cancel this reservation?')) return;
+        if (!confirm('Cancel this registration?')) return;
 
         button.disabled = true;
 
@@ -472,9 +595,9 @@
 
           await loadData();
           renderAll();
-          showToast('Reservation cancelled.');
+          showToast('Registration cancelled.');
         } catch (error) {
-          showToast(error.message);
+          showToast(error.message, 'error');
           button.disabled = false;
         }
       });
@@ -496,7 +619,7 @@
           <p><strong>Email:</strong> ${escapeHtml(email)}</p>
           <div class="profile-meta">Registrations: ${registrations.length}</div>
           <p class="profile-note">
-            Your account information is used for your event reservations.
+            Your account information is used for your event registrations.
           </p>
         </div>
       </div>
@@ -576,12 +699,18 @@
   }
 
   function openRegistrationModal(event) {
+    // Finished events cannot be opened or registered for.
+    if (isEventFinished(event)) {
+      showToast('This event has already finished.', 'error');
+      return;
+    }
+
     const registered = Number(event.registered || 0);
     const capacity = Number(event.capacity || 0);
     const spots = Math.max(0, capacity - registered);
 
     if (spots <= 0) {
-      showToast('This event has no spots left.');
+      showToast('This event has no spots left.', 'error');
       return;
     }
 
@@ -590,7 +719,7 @@
     );
 
     if (alreadyRegistered) {
-      showToast('You already have a reservation for this event.');
+      showToast('You are already registered for this event.', 'error');
       return;
     }
 
@@ -610,24 +739,59 @@
           </div>
 
           <div class="modal-body">
-            <p>Reserve a free spot using your participant account.</p>
+            <p>Fill in your details to register for this event.</p>
 
             <div class="field">
-              <label for="registration-quantity">Number of Spots</label>
-              <input id="registration-quantity" type="number"
-                min="1" max="${spots}" value="1" required>
+              <label for="registration-name">Full Name</label>
+              <input id="registration-name" type="text" maxlength="100"
+                value="${escapeHtml(currentUser?.name || '')}"
+                placeholder="Enter your full name" required>
             </div>
 
-            <div class="total-row">
-              <span class="lbl">Registration Fee</span>
-              <span class="amt">FREE</span>
+            <div class="field">
+              <label for="registration-course">Course</label>
+              <select id="registration-course" required>
+                <option value="">Select your course</option>
+                <option value="BSCS">BSCS</option>
+                <option value="BSIT">BSIT</option>
+              </select>
             </div>
 
+            <div class="field">
+              <label for="registration-section">Section</label>
+              <input id="registration-section" type="text" maxlength="1"
+                placeholder="e.g. A" required>
+            </div>
+
+            <div class="field">
+              <label for="registration-year">Year Level</label>
+              <select id="registration-year" required>
+                <option value="">Select year level</option>
+                <option value="1st Year">1st Year</option>
+                <option value="2nd Year">2nd Year</option>
+                <option value="3rd Year">3rd Year</option>
+                <option value="4th Year">4th Year</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Will you attend this event?</label>
+              <div style="display:flex; gap:24px; margin-top:6px;">
+                <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
+                  <input type="radio" name="registration-attending"
+                    value="yes" style="width:auto; margin:0;"> Yes
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
+                  <input type="radio" name="registration-attending"
+                    value="no" style="width:auto; margin:0;"> No
+                </label>
+              </div>
+            </div>
             <div id="registration-error" class="form-err" hidden></div>
 
             <button type="button" class="btn btn-gold submit-btn"
               id="registration-submit">
-              Confirm Reservation
+              Confirm Registration
             </button>
           </div>
         </div>
@@ -645,18 +809,34 @@
     });
 
     $('#registration-submit').addEventListener('click', async () => {
-      const quantity = Number($('#registration-quantity').value);
       const error = $('#registration-error');
       const button = $('#registration-submit');
 
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > spots) {
-        error.textContent = `Choose a quantity from 1 to ${spots}.`;
+      const name = $('#registration-name').value.trim();
+      const course = $('#registration-course').value.trim();
+      const section = $('#registration-section').value.trim();
+      const year = $('#registration-year').value;
+      const checked = document.querySelector(
+        'input[name="registration-attending"]:checked'
+      );
+      const attending = checked ? checked.value : '';
+
+      if (!name || !course || !section || !year || !attending) {
+        error.textContent =
+          'Please fill in all fields and answer whether you will attend.';
+        error.hidden = false;
+        return;
+      }
+
+      // Name must have no numbers.
+      if (!NAME_RE.test(name)) {
+        error.textContent = NAME_MESSAGE;
         error.hidden = false;
         return;
       }
 
       button.disabled = true;
-      button.textContent = 'Reserving...';
+      button.textContent = 'Submitting...';
       error.hidden = true;
 
       try {
@@ -664,19 +844,23 @@
           `/api/events/${encodeURIComponent(event.id)}/register`,
           {
             method: 'POST',
-            body: JSON.stringify({ quantity })
+            body: JSON.stringify({ name, course, section, year, attending })
           }
         );
 
         await loadData();
         close();
         renderAll();
-        showToast('Your free reservation is confirmed!');
+        showToast(
+          attending === 'yes'
+            ? 'You are registered for this event!'
+            : 'Thanks! Your response has been recorded.'
+        );
       } catch (err) {
         error.textContent = err.message;
         error.hidden = false;
         button.disabled = false;
-        button.textContent = 'Confirm Reservation';
+        button.textContent = 'Confirm Registration';
       }
     });
   }

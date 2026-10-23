@@ -1,28 +1,43 @@
-
-import json
 import os
 import re
-import threading
 import uuid
-from datetime import datetime, timezone
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 
-from flask import Flask, jsonify, request, render_template, session
+import mysql.connector
+from mysql.connector import pooling
+from flask import (
+    Flask, jsonify, request, render_template, session, redirect
+)
 from werkzeug.security import generate_password_hash, check_password_hash
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:  # python-dotenv is optional
+    pass
 
 
 # =========================================================
 # CONFIGURATION
 # =========================================================
 
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(APP_ROOT, "data.json")
-
 ADMIN_EMAIL = os.environ.get(
     "ADMIN_EMAIL", "admin@gatehub.local"
 ).strip().lower()
 
-ADMIN_PASSWORD = os.environ.get("admin", "gate2026")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "gate2026")
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+
+DB_CONFIG = {
+    "host": os.environ.get("DB_HOST", "127.0.0.1"),
+    "port": int(os.environ.get("DB_PORT", "3306")),
+    "user": os.environ.get("DB_USER", "root"),
+    "password": os.environ.get("DB_PASSWORD", ""),
+    "database": os.environ.get("DB_NAME", "event_hub"),
+    "charset": "utf8mb4",
+}
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -32,159 +47,366 @@ app.config["SESSION_COOKIE_SECURE"] = (
     os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 )
 
-_lock = threading.Lock()
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+STUDENT_ID_RE = re.compile(r"^\d+(?:-\d+)*$")
+NAME_RE = re.compile(r"^[^\W\d_]+(?:[ .'’\-]+[^\W\d_]+)*\.?$")
+
+# Allowed year levels for the registration form
+YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 
 # =========================================================
-# JSON DATABASE
+# MYSQL CONNECTION
+#
+# A small connection pool is used. transaction() gives one
+# cursor, commits when the block ends normally, and rolls
+# back if an error happens.
 # =========================================================
 
-def _save_data(data):
-    """Save JSON data safely using a temporary file."""
-
-    temp_file = DATA_FILE + ".tmp"
-
-    with open(temp_file, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=2, ensure_ascii=False)
-
-    os.replace(temp_file, DATA_FILE)
+_pool = None
 
 
-def _load_data():
-    """Load JSON data and migrate older records safely."""
+def _get_pool():
+    global _pool
 
-    if not os.path.exists(DATA_FILE):
-        return {
-            "events": [],
-            "registrations": [],
-            "categories": [],
-            "users": [],
-        }
-
-    with open(DATA_FILE, "r", encoding="utf-8") as file:
-        data = json.load(file)
-
-    changed = False
-
-    # Ensure required database collections exist.
-    for key in ("events", "categories", "users"):
-        if key not in data or not isinstance(data[key], list):
-            data[key] = []
-            changed = True
-
-    # Migrate old tickets into registrations.
-    if "registrations" not in data:
-        data["registrations"] = data.pop("tickets", [])
-        changed = True
-    elif "tickets" in data:
-        data.pop("tickets", None)
-        changed = True
-
-    if not isinstance(data["registrations"], list):
-        data["registrations"] = []
-        changed = True
-
-    # Repair and migrate existing participant accounts.
-    # IMPORTANT: Save newly generated IDs so they remain stable.
-    for user in data["users"]:
-        if not isinstance(user, dict):
-            continue
-
-        if not user.get("id"):
-            user["id"] = "usr" + uuid.uuid4().hex[:12]
-            changed = True
-
-        if "student_id" not in user and "studentId" in user:
-            user["student_id"] = user.pop("studentId")
-            changed = True
-
-        if "student_id" not in user:
-            user["student_id"] = ""
-            changed = True
-
-        if "name" not in user:
-            user["name"] = ""
-            changed = True
-
-        if "email" not in user:
-            user["email"] = ""
-            changed = True
-
-        if "createdAt" not in user:
-            user["createdAt"] = None
-            changed = True
-
-    # Migrate old registration fields.
-    for registration in data["registrations"]:
-        if not isinstance(registration, dict):
-            continue
-
-        for old_field in ("code", "total", "purchasedAt"):
-            if old_field in registration:
-                registration.pop(old_field, None)
-                changed = True
-
-        if not registration.get("id"):
-            registration["id"] = "reg" + uuid.uuid4().hex[:10]
-            changed = True
-
-        if "quantity" not in registration:
-            registration["quantity"] = 1
-            changed = True
-
-        if "attendanceStatus" not in registration:
-            registration["attendanceStatus"] = "registered"
-            changed = True
-
-    # Remove old ticket pricing and ensure event capacities.
-    for event in data["events"]:
-        if not isinstance(event, dict):
-            continue
-
-        if "price" in event:
-            event.pop("price", None)
-            changed = True
-
-        if "capacity" not in event:
-            event["capacity"] = 1
-            changed = True
-
-        category = event.get("category", "Meetup")
-
-        if not event.get("category"):
-            event["category"] = category
-            changed = True
-
-        if category not in data["categories"]:
-            data["categories"].append(category)
-            changed = True
-
-    # Recalculate registration counts from saved registrations.
-    for event in data["events"]:
-        if not isinstance(event, dict):
-            continue
-
-        registered = sum(
-            max(0, int(registration.get("quantity", 1) or 1))
-            for registration in data["registrations"]
-            if isinstance(registration, dict)
-            and registration.get("eventId") == event.get("id")
+    if _pool is None:
+        _pool = pooling.MySQLConnectionPool(
+            pool_name="event_hub_pool",
+            pool_size=5,
+            **DB_CONFIG,
         )
 
-        if event.get("registered") != registered:
-            event["registered"] = registered
-            changed = True
+    return _pool
 
-    # Persist repairs so generated IDs do not change on every request.
-    if changed:
-        _save_data(data)
 
-    return data
+@contextmanager
+def transaction():
+    conn = _get_pool().get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        yield cursor
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# =========================================================
+# OOP MODELS
+#
+# Inheritance:
+#   Account (abstract)  -> Participant, Admin
+#   Event (abstract)    -> UpcomingEvent, ReopenedEvent, FinishedEvent
+#   Registration (abstract) -> AttendingRegistration, DeclinedRegistration
+#
+# Polymorphism:
+#   to_public()   behaves differently for Participant and Admin
+#   is_finished() behaves differently for each Event subclass
+#   spots_used()  behaves differently for each Registration subclass
+#
+# The models wrap plain dictionaries built from MySQL rows,
+# so every route returns the same JSON as before.
+# =========================================================
+
+class BaseModel:
+    """Parent of every model. Wraps one dictionary."""
+
+    def __init__(self, data):
+        self._data = data
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def to_dict(self):
+        return self._data
+
+
+# ---------------- Accounts ----------------
+
+class Account(BaseModel, ABC):
+    """Abstract parent for every kind of logged-in user."""
+
+    role = "account"
+
+    @abstractmethod
+    def to_public(self):
+        """Return public account fields only (never password hashes)."""
+
+
+class Participant(Account):
+    role = "participant"
+
+    def to_public(self):
+        return {
+            "id": self.get("id", ""),
+            "student_id": self.get("student_id", ""),
+            "name": self.get("name", ""),
+            "email": self.get("email", ""),
+            "role": self.role,
+            "createdAt": self.get("createdAt"),
+        }
+
+
+class Admin(Account):
+    role = "admin"
+
+    def to_public(self):
+        return {
+            "email": self.get("email", ADMIN_EMAIL),
+            "role": self.role,
+        }
+
+
+# ---------------- Events ----------------
+
+class Event(BaseModel, ABC):
+    """Abstract parent for events. Each status decides if it is finished."""
+
+    @abstractmethod
+    def is_finished(self):
+        """Return True when the event is finished."""
+
+    @staticmethod
+    def from_dict(data):
+        """Pick the right Event subclass from the saved status."""
+
+        status = data.get("status", "upcoming")
+
+        if status == "finished":
+            return FinishedEvent(data)
+
+        if status == "reopened":
+            return ReopenedEvent(data)
+
+        return UpcomingEvent(data)
+
+
+class FinishedEvent(Event):
+    """The admin marked the event as done."""
+
+    def is_finished(self):
+        return True
+
+
+class ReopenedEvent(Event):
+    """The admin reopened it, so it will not auto-finish again until
+    the admin clicks Mark as Done."""
+
+    def is_finished(self):
+        return False
+
+
+class UpcomingEvent(Event):
+    """Finishes automatically once its date and time have passed."""
+
+    def is_finished(self):
+        try:
+            event_time = datetime.strptime(
+                f"{self.get('date')} {self.get('time')}",
+                "%Y-%m-%d %H:%M",
+            )
+            return event_time < datetime.now()
+        except (ValueError, TypeError):
+            return False
+
+
+# ---------------- Registrations ----------------
+
+class Registration(BaseModel, ABC):
+    """Abstract parent for registrations. Each type decides its spots."""
+
+    @abstractmethod
+    def spots_used(self):
+        """Return how many event spots this registration uses."""
+
+    @staticmethod
+    def from_dict(data):
+        """Pick the right Registration subclass from the answer."""
+
+        if str(data.get("attending", "yes")).lower() == "no":
+            return DeclinedRegistration(data)
+
+        return AttendingRegistration(data)
+
+
+class AttendingRegistration(Registration):
+    def spots_used(self):
+        try:
+            return max(0, int(self.get("quantity", 1)))
+        except (ValueError, TypeError):
+            return 1
+
+
+class DeclinedRegistration(Registration):
+    """A 'no' answer uses no spot."""
+
+    def spots_used(self):
+        return 0
+
+
+# =========================================================
+# ROW -> JSON HELPERS
+#
+# MySQL columns are snake_case. The browser code expects the
+# same camelCase JSON as the old data.json version, so rows
+# are converted here.
+# =========================================================
+
+def _iso(value):
+    """DATETIME (stored as UTC) -> ISO text the browser can parse."""
+
+    if value is None:
+        return None
+
+    return value.replace(tzinfo=timezone.utc).isoformat()
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _fmt_time(value):
+    """MySQL TIME comes back as timedelta. Return 'HH:MM'."""
+
+    if value is None:
+        return ""
+
+    if isinstance(value, timedelta):
+        total = int(value.total_seconds())
+        return f"{total // 3600:02d}:{(total % 3600) // 60:02d}"
+
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+
+    return str(value)[:5]
+
+
+def _parse_date(text):
+    return datetime.strptime(text, "%Y-%m-%d").date()
+
+
+def _parse_time(text):
+    for pattern in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(text, pattern).time()
+        except ValueError:
+            continue
+
+    raise ValueError("Invalid time.")
+
+
+def user_to_dict(row):
+    return {
+        "id": row["id"],
+        "student_id": row["student_id"],
+        "name": row["name"],
+        "email": row["email"],
+        "createdAt": _iso(row["created_at"]),
+    }
+
+
+# Event query that also counts the reserved spots.
+EVENT_SELECT = """
+    SELECT e.*,
+           COALESCE((
+               SELECT SUM(r.quantity)
+               FROM registrations r
+               WHERE r.event_id = e.id AND r.attending = 'yes'
+           ), 0) AS registered
+    FROM events e
+"""
+
+
+def event_to_dict(row):
+    event = {
+        "id": row["id"],
+        "title": row["title"],
+        "category": row["category"],
+        "date": row["event_date"].isoformat(),
+        "time": _fmt_time(row["event_time"]),
+        "location": row["location"],
+        "capacity": row["capacity"],
+        "registered": int(row["registered"]),
+        "description": row["description"] or "",
+        "status": row["status"],
+    }
+
+    if row.get("finished_at"):
+        event["finishedAt"] = _iso(row["finished_at"])
+
+    return event
+
+
+REGISTRATION_SELECT = """
+    SELECT r.*, e.title AS event_title
+    FROM registrations r
+    JOIN events e ON e.id = r.event_id
+"""
+
+
+def registration_to_dict(row):
+    return {
+        "id": row["id"],
+        "eventId": row["event_id"],
+        "eventTitle": row["event_title"],
+        "student_id": row["student_id"],
+        "name": row["name"],
+        "email": row["email"],
+        "course": row["course"],
+        "section": row["section"],
+        "year": row["year_level"],
+        "attending": row["attending"],
+        "quantity": row["quantity"],
+        "owner": row["user_id"],
+        "attendanceStatus": row["attendance_status"],
+        "registeredAt": _iso(row["registered_at"]),
+    }
 
 
 def _get_json():
     return request.get_json(silent=True) or {}
+
+
+# =========================================================
+# QUERY HELPERS
+# =========================================================
+
+def _fetch_event(cursor, event_id, lock=False):
+    cursor.execute(
+        EVENT_SELECT + " WHERE e.id = %s" + (" FOR UPDATE" if lock else ""),
+        (event_id,),
+    )
+    row = cursor.fetchone()
+    return event_to_dict(row) if row else None
+
+
+def _fetch_user_by_id(cursor, user_id):
+    cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+    return cursor.fetchone()
+
+
+def _event_reserved_count(cursor, event_id):
+    """Spots used by all registrations of one event."""
+
+    cursor.execute(
+        "SELECT attending, quantity FROM registrations WHERE event_id = %s",
+        (event_id,),
+    )
+
+    return sum(
+        Registration.from_dict(row).spots_used()
+        for row in cursor.fetchall()
+    )
+
+
+def _is_finished(event):
+    """Finished if the admin marked it done, or its date and time passed."""
+
+    return Event.from_dict(event).is_finished()
 
 
 # =========================================================
@@ -216,48 +438,10 @@ def _require_admin():
     return None
 
 
-def _safe_user(user):
+def _safe_user(user_dict):
     """Return public account fields only. Never expose password hashes."""
 
-    return {
-        "id": user.get("id", ""),
-        "student_id": user.get(
-            "student_id", user.get("studentId", "")
-        ),
-        "name": user.get("name", ""),
-        "email": user.get("email", ""),
-        "role": "participant",
-        "createdAt": user.get("createdAt"),
-    }
-
-
-def _find_event(data, event_id):
-    return next(
-        (
-            event for event in data["events"]
-            if isinstance(event, dict)
-            and str(event.get("id")) == str(event_id)
-        ),
-        None,
-    )
-
-
-def _event_reserved_count(data, event_id):
-    total = 0
-
-    for registration in data["registrations"]:
-        if not isinstance(registration, dict):
-            continue
-
-        if str(registration.get("eventId")) == str(event_id):
-            try:
-                total += max(
-                    0, int(registration.get("quantity", 1) or 1)
-                )
-            except (ValueError, TypeError):
-                continue
-
-    return total
+    return Participant(user_dict).to_public()
 
 
 # =========================================================
@@ -271,14 +455,18 @@ def index():
 
 @app.route("/admin")
 def admin_page():
+    # Anyone who is not signed in as the admin goes back to sign-in.
     if _current_role() != "admin":
-        return render_template("index.html")
+        return redirect("/")
 
     return render_template("admin.html")
 
 
 # =========================================================
-# AUTH: PARTICIPANT SIGN UP
+# AUTH: SIGN UP (participants only)
+#
+# The new account is NOT logged in automatically. The person
+# goes to the Sign In form and logs in themselves.
 # =========================================================
 
 @app.route("/api/auth/register", methods=["POST"])
@@ -303,6 +491,19 @@ def register_account():
     if len(name) > 100:
         return jsonify({"error": "Name is too long."}), 400
 
+    if not STUDENT_ID_RE.fullmatch(student_id):
+        return jsonify({
+            "error": "Student ID can only contain numbers (and hyphens)."
+        }), 400
+
+    if not NAME_RE.fullmatch(name):
+        return jsonify({
+            "error": (
+                "Name can only contain letters, spaces, periods, "
+                "apostrophes and hyphens."
+            )
+        }), 400
+
     if not EMAIL_RE.fullmatch(email) or len(email) > 254:
         return jsonify({"error": "Enter a valid email address."}), 400
 
@@ -319,62 +520,62 @@ def register_account():
             "error": "This email is reserved for the administrator."
         }), 409
 
-    with _lock:
-        data = _load_data()
+    user_id = "usr" + uuid.uuid4().hex[:12]
 
-        existing_email = any(
-            isinstance(user, dict)
-            and str(user.get("email", "")).strip().lower() == email
-            for user in data["users"]
-        )
+    try:
+        with transaction() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM users WHERE email = %s", (email,)
+            )
+            if cursor.fetchone():
+                return jsonify({
+                    "error": "An account with this email already exists."
+                }), 409
 
-        if existing_email:
-            return jsonify({
-                "error": "An account with this email already exists."
-            }), 409
+            cursor.execute(
+                "SELECT 1 FROM users WHERE student_id = %s",
+                (student_id,),
+            )
+            if cursor.fetchone():
+                return jsonify({
+                    "error": "This Student ID is already registered."
+                }), 409
 
-        existing_student_id = any(
-            isinstance(user, dict)
-            and str(
-                user.get("student_id", user.get("studentId", ""))
-            ).strip().casefold() == student_id.casefold()
-            for user in data["users"]
-        )
+            cursor.execute(
+                """
+                INSERT INTO users
+                    (id, student_id, name, email, password_hash, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id, student_id, name, email,
+                    generate_password_hash(password), _utc_now(),
+                ),
+            )
 
-        if existing_student_id:
-            return jsonify({
-                "error": "This Student ID is already registered."
-            }), 409
+            user = _fetch_user_by_id(cursor, user_id)
 
-        user = {
-            "id": "usr" + uuid.uuid4().hex[:12],
-            "student_id": student_id,
-            "name": name,
-            "email": email,
-            "passwordHash": generate_password_hash(password),
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-        }
-
-        data["users"].append(user)
-        _save_data(data)
+    except mysql.connector.IntegrityError:
+        # Two people used the same email / student ID at the same time.
+        return jsonify({
+            "error": "This email or Student ID is already registered."
+        }), 409
 
     session.clear()
-    session["user_id"] = user["id"]
-    session["role"] = "participant"
 
     return jsonify({
-        "message": "Account created successfully.",
-        "user": _safe_user(user),
+        "message": "Account created successfully. Please sign in.",
+        "user": _safe_user(user_to_dict(user)),
         "role": "participant",
     }), 201
 
 
 # =========================================================
-# AUTH: PARTICIPANT LOGIN
+# AUTH: ONE SHARED LOGIN FOR ADMIN AND PARTICIPANTS
 # =========================================================
 
 @app.route("/api/auth/login", methods=["POST"])
-def participant_login():
+def login():
     body = _get_json()
 
     email = str(body.get("email", "")).strip().lower()
@@ -385,95 +586,43 @@ def participant_login():
             "error": "Email and password are required."
         }), 400
 
+    # ---- Administrator ----
     if email == ADMIN_EMAIL:
-        return jsonify({
-            "error": "Use the administrator login."
-        }), 403
-
-    with _lock:
-        data = _load_data()
-
-        user = next(
-            (
-                item for item in data["users"]
-                if isinstance(item, dict)
-                and str(item.get("email", "")).strip().lower() == email
-            ),
-            None,
-        )
-
-        if not user or not check_password_hash(
-            user.get("passwordHash", ""), password
-        ):
+        if password != ADMIN_PASSWORD:
             return jsonify({
                 "error": "Invalid email or password."
             }), 401
 
-        user_response = _safe_user(user)
-        user_id = user["id"]
+        session.clear()
+        session["role"] = "admin"
+        session["admin_email"] = ADMIN_EMAIL
+
+        return jsonify({
+            "message": "Login successful.",
+            "role": "admin",
+            "redirect": "/admin",
+            "user": Admin({"email": ADMIN_EMAIL}).to_public(),
+        })
+
+    # ---- Participant ----
+    with transaction() as cursor:
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({
+            "error": "Invalid email or password."
+        }), 401
 
     session.clear()
-    session["user_id"] = user_id
+    session["user_id"] = user["id"]
     session["role"] = "participant"
 
     return jsonify({
         "message": "Login successful.",
         "role": "participant",
-        "user": user_response,
+        "user": _safe_user(user_to_dict(user)),
     })
-
-
-# =========================================================
-# AUTH: ADMIN LOGIN
-# =========================================================
-
-@app.route("/api/auth/admin-login", methods=["POST"])
-def admin_login():
-    body = _get_json()
-
-    email = str(body.get("email", "")).strip().lower()
-    password = body.get("password", "")
-
-    if (
-        email != ADMIN_EMAIL
-        or not isinstance(password, str)
-        or password != ADMIN_PASSWORD
-    ):
-        return jsonify({
-            "error": "Invalid administrator credentials."
-        }), 401
-
-    session.clear()
-    session["role"] = "admin"
-    session["admin_email"] = ADMIN_EMAIL
-
-    return jsonify({
-        "message": "Administrator login successful.",
-        "role": "admin",
-        "user": {
-            "email": ADMIN_EMAIL,
-            "role": "admin",
-        },
-    })
-
-
-@app.route("/api/admin/verify", methods=["POST"])
-def verify_admin():
-    """Backward compatibility with the password-only admin form."""
-
-    body = _get_json()
-    password = body.get("password", "")
-
-    if not isinstance(password, str) or password != ADMIN_PASSWORD:
-        return jsonify({
-            "error": "Incorrect administrator password."
-        }), 401
-
-    session.clear()
-    session["role"] = "admin"
-    session["admin_email"] = ADMIN_EMAIL
-
-    return jsonify({"ok": True, "role": "admin"})
 
 
 @app.route("/api/auth/me", methods=["GET"])
@@ -481,34 +630,24 @@ def get_current_user():
     role = _current_role()
 
     if role == "admin":
+        admin = Admin({"email": session.get("admin_email", ADMIN_EMAIL)})
+
         return jsonify({
             "authenticated": True,
             "role": "admin",
-            "user": {
-                "email": session.get("admin_email", ADMIN_EMAIL),
-                "role": "admin",
-            },
+            "redirect": "/admin",
+            "user": admin.to_public(),
         })
 
     if role == "participant":
-        user_id = session.get("user_id")
-
-        with _lock:
-            data = _load_data()
-            user = next(
-                (
-                    item for item in data["users"]
-                    if isinstance(item, dict)
-                    and str(item.get("id")) == str(user_id)
-                ),
-                None,
-            )
+        with transaction() as cursor:
+            user = _fetch_user_by_id(cursor, session.get("user_id"))
 
         if user:
             return jsonify({
                 "authenticated": True,
                 "role": "participant",
-                "user": _safe_user(user),
+                "user": _safe_user(user_to_dict(user)),
             })
 
         session.clear()
@@ -538,16 +677,31 @@ def admin_logout():
 
 @app.route("/api/events", methods=["GET"])
 def get_events():
-    with _lock:
-        data = _load_data()
-        return jsonify(data["events"])
+    with transaction() as cursor:
+        cursor.execute(EVENT_SELECT + " ORDER BY e.created_at, e.event_date")
+        rows = cursor.fetchall()
+
+    # "isFinished" is computed on the fly and never saved.
+    events = []
+
+    for row in rows:
+        event = event_to_dict(row)
+        event["isFinished"] = _is_finished(event)
+        events.append(event)
+
+    return jsonify(events)
 
 
 @app.route("/api/categories", methods=["GET"])
 def get_categories():
-    with _lock:
-        data = _load_data()
-        return jsonify(data["categories"])
+    # Categories are simply the ones used by existing events.
+    with transaction() as cursor:
+        cursor.execute(
+            "SELECT DISTINCT category FROM events ORDER BY category"
+        )
+        names = [row["category"] for row in cursor.fetchall()]
+
+    return jsonify(names)
 
 
 # =========================================================
@@ -588,32 +742,36 @@ def create_event():
             "error": "Capacity must be at least 1."
         }), 400
 
-    if len(title) > 150 or len(location) > 200:
+    if len(title) > 150 or len(location) > 200 or len(category) > 50:
         return jsonify({
-            "error": "Title or location is too long."
+            "error": "Title, category, or location is too long."
         }), 400
 
-    with _lock:
-        data = _load_data()
+    try:
+        event_date = _parse_date(date)
+        event_time = _parse_time(time)
+    except ValueError:
+        return jsonify({
+            "error": "Enter a valid date and time."
+        }), 400
 
-        event = {
-            "id": "ev" + uuid.uuid4().hex[:10],
-            "title": title,
-            "category": category,
-            "date": date,
-            "time": time,
-            "location": location,
-            "capacity": capacity,
-            "registered": 0,
-            "description": description,
-        }
+    event_id = "ev" + uuid.uuid4().hex[:10]
 
-        data["events"].append(event)
+    with transaction() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO events
+                (id, title, category, event_date, event_time, location,
+                 capacity, description, status, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'upcoming', %s)
+            """,
+            (
+                event_id, title, category, event_date, event_time,
+                location, capacity, description, _utc_now(),
+            ),
+        )
 
-        if category not in data["categories"]:
-            data["categories"].append(category)
-
-        _save_data(data)
+        event = _fetch_event(cursor, event_id)
 
     return jsonify(event), 201
 
@@ -644,9 +802,9 @@ def update_event(event_id):
             )
         }), 400
 
-    if len(title) > 150 or len(location) > 200:
+    if len(title) > 150 or len(location) > 200 or len(category) > 50:
         return jsonify({
-            "error": "Title or location is too long."
+            "error": "Title, category, or location is too long."
         }), 400
 
     try:
@@ -661,14 +819,22 @@ def update_event(event_id):
             "error": "Capacity must be at least 1."
         }), 400
 
-    with _lock:
-        data = _load_data()
-        event = _find_event(data, event_id)
+    try:
+        event_date = _parse_date(date)
+        event_time = _parse_time(time)
+    except ValueError:
+        return jsonify({
+            "error": "Enter a valid date and time."
+        }), 400
+
+    with transaction() as cursor:
+        # FOR UPDATE locks this event row while it is being changed.
+        event = _fetch_event(cursor, event_id, lock=True)
 
         if not event:
             return jsonify({"error": "Event not found."}), 404
 
-        reserved = _event_reserved_count(data, event_id)
+        reserved = _event_reserved_count(cursor, event_id)
 
         if capacity < reserved:
             return jsonify({
@@ -678,21 +844,21 @@ def update_event(event_id):
                 )
             }), 400
 
-        event.update({
-            "title": title,
-            "category": category,
-            "date": date,
-            "time": time,
-            "location": location,
-            "capacity": capacity,
-            "registered": reserved,
-            "description": description,
-        })
+        cursor.execute(
+            """
+            UPDATE events
+            SET title = %s, category = %s, event_date = %s,
+                event_time = %s, location = %s, capacity = %s,
+                description = %s
+            WHERE id = %s
+            """,
+            (
+                title, category, event_date, event_time, location,
+                capacity, description, event_id,
+            ),
+        )
 
-        if category not in data["categories"]:
-            data["categories"].append(category)
-
-        _save_data(data)
+        event = _fetch_event(cursor, event_id)
 
     return jsonify({
         "message": "Event updated successfully.",
@@ -710,21 +876,19 @@ def delete_event(event_id):
     if permission_error:
         return permission_error
 
-    with _lock:
-        data = _load_data()
-        event = _find_event(data, event_id)
+    with transaction() as cursor:
+        event = _fetch_event(cursor, event_id, lock=True)
 
         if not event:
             return jsonify({"error": "Event not found."}), 404
 
         # Preserve registration and attendance history.
-        has_registrations = any(
-            isinstance(registration, dict)
-            and str(registration.get("eventId")) == str(event_id)
-            for registration in data["registrations"]
+        cursor.execute(
+            "SELECT COUNT(*) AS total FROM registrations WHERE event_id = %s",
+            (event_id,),
         )
 
-        if has_registrations:
+        if cursor.fetchone()["total"] > 0:
             return jsonify({
                 "error": (
                     "This event has registration records and cannot "
@@ -733,23 +897,57 @@ def delete_event(event_id):
                 )
             }), 409
 
-        data["events"].remove(event)
-
-        category = event.get("category")
-
-        if category and not any(
-            item.get("category") == category
-            for item in data["events"]
-            if isinstance(item, dict)
-        ):
-            data["categories"] = [
-                item for item in data["categories"]
-                if item != category
-            ]
-
-        _save_data(data)
+        cursor.execute("DELETE FROM events WHERE id = %s", (event_id,))
 
     return jsonify({"message": "Event deleted successfully."})
+
+
+# =========================================================
+# ADMIN: MARK EVENT AS FINISHED / REOPEN EVENT
+# =========================================================
+
+@app.route("/api/events/<event_id>/finish", methods=["POST"])
+def finish_event(event_id):
+    permission_error = _require_admin()
+    if permission_error:
+        return permission_error
+
+    with transaction() as cursor:
+        cursor.execute(
+            """
+            UPDATE events
+            SET status = 'finished', finished_at = %s
+            WHERE id = %s
+            """,
+            (_utc_now(), event_id),
+        )
+
+        if cursor.rowcount == 0 and not _fetch_event(cursor, event_id):
+            return jsonify({"error": "Event not found."}), 404
+
+    return jsonify({"message": "Event marked as finished."})
+
+
+@app.route("/api/events/<event_id>/reopen", methods=["POST"])
+def reopen_event(event_id):
+    permission_error = _require_admin()
+    if permission_error:
+        return permission_error
+
+    with transaction() as cursor:
+        cursor.execute(
+            """
+            UPDATE events
+            SET status = 'reopened', finished_at = NULL
+            WHERE id = %s
+            """,
+            (event_id,),
+        )
+
+        if cursor.rowcount == 0 and not _fetch_event(cursor, event_id):
+            return jsonify({"error": "Event not found."}), 404
+
+    return jsonify({"message": "Event reopened."})
 
 
 # =========================================================
@@ -762,13 +960,9 @@ def get_participant_accounts():
     if permission_error:
         return permission_error
 
-    with _lock:
-        data = _load_data()
-        users = [
-            _safe_user(user)
-            for user in data["users"]
-            if isinstance(user, dict)
-        ]
+    with transaction() as cursor:
+        cursor.execute("SELECT * FROM users ORDER BY created_at")
+        users = [_safe_user(user_to_dict(row)) for row in cursor.fetchall()]
 
     return jsonify(users)
 
@@ -783,13 +977,17 @@ def get_all_registrations():
     if permission_error:
         return permission_error
 
-    with _lock:
-        data = _load_data()
-        return jsonify(data["registrations"])
+    with transaction() as cursor:
+        cursor.execute(REGISTRATION_SELECT + " ORDER BY r.registered_at")
+        registrations = [
+            registration_to_dict(row) for row in cursor.fetchall()
+        ]
+
+    return jsonify(registrations)
 
 
 # =========================================================
-# PARTICIPANT: RESERVE A FREE EVENT
+# PARTICIPANT: REGISTER FOR A FREE EVENT
 # =========================================================
 
 @app.route("/api/events/<event_id>/register", methods=["POST"])
@@ -801,88 +999,120 @@ def reserve_spot(event_id):
     body = _get_json()
     user_id = session["user_id"]
 
+    name = str(body.get("name", "")).strip()
+    course = str(body.get("course", "")).strip()
+    section = str(body.get("section", "")).strip()
+    year = str(body.get("year", "")).strip()
+    attending = str(body.get("attending", "")).strip().lower()
+
+    if not all([name, course, section, year, attending]):
+        return jsonify({
+            "error": (
+                "Name, course, section, year level, and your "
+                "attendance answer are required."
+            )
+        }), 400
+
+    if len(name) > 100 or len(course) > 100 or len(section) > 30:
+        return jsonify({
+            "error": "Name, course, or section is too long."
+        }), 400
+
+    if not NAME_RE.fullmatch(name):
+        return jsonify({
+            "error": (
+                "Name can only contain letters, spaces, periods, "
+                "apostrophes and hyphens."
+            )
+        }), 400
+
+    if year not in YEAR_LEVELS:
+        return jsonify({"error": "Choose a valid year level."}), 400
+
+    if attending not in ("yes", "no"):
+        return jsonify({
+            "error": "Please answer Yes or No."
+        }), 400
+
+    registration_id = "reg" + uuid.uuid4().hex[:10]
+
     try:
-        quantity = int(body.get("quantity", 1))
-    except (ValueError, TypeError):
+        with transaction() as cursor:
+            user = _fetch_user_by_id(cursor, user_id)
+
+            if not user:
+                session.clear()
+                return jsonify({
+                    "error": "Account not found. Please log in again."
+                }), 401
+
+            # Lock the event row so two people cannot take the last spot.
+            event = _fetch_event(cursor, event_id, lock=True)
+
+            if not event:
+                return jsonify({"error": "Event not found."}), 404
+
+            # Block registration for finished events.
+            if _is_finished(event):
+                return jsonify({
+                    "error": "This event has already finished."
+                }), 400
+
+            cursor.execute(
+                """
+                SELECT 1 FROM registrations
+                WHERE event_id = %s AND user_id = %s
+                """,
+                (event_id, user_id),
+            )
+
+            if cursor.fetchone():
+                return jsonify({
+                    "error": "You have already registered for this event."
+                }), 409
+
+            # Only a "yes" answer takes a spot.
+            if attending == "yes":
+                reserved = _event_reserved_count(cursor, event_id)
+
+                if int(event["capacity"]) - reserved < 1:
+                    return jsonify({
+                        "error": "No spots are available for this event."
+                    }), 400
+
+            cursor.execute(
+                """
+                INSERT INTO registrations
+                    (id, event_id, user_id, student_id, name, email,
+                     course, section, year_level, attending, quantity,
+                     attendance_status, registered_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1,
+                        'registered', %s)
+                """,
+                (
+                    registration_id, event_id, user_id,
+                    user["student_id"], name, user["email"],
+                    course, section, year, attending, _utc_now(),
+                ),
+            )
+
+            cursor.execute(
+                REGISTRATION_SELECT + " WHERE r.id = %s",
+                (registration_id,),
+            )
+            registration = registration_to_dict(cursor.fetchone())
+
+    except mysql.connector.IntegrityError:
         return jsonify({
-            "error": "Number of spots must be a whole number."
-        }), 400
-
-    if quantity < 1:
-        return jsonify({
-            "error": "Reserve at least one spot."
-        }), 400
-
-    with _lock:
-        data = _load_data()
-
-        user = next(
-            (
-                item for item in data["users"]
-                if isinstance(item, dict)
-                and str(item.get("id")) == str(user_id)
-            ),
-            None,
-        )
-
-        if not user:
-            session.clear()
-            return jsonify({
-                "error": "Account not found. Please log in again."
-            }), 401
-
-        event = _find_event(data, event_id)
-
-        if not event:
-            return jsonify({"error": "Event not found."}), 404
-
-        already_reserved = any(
-            isinstance(registration, dict)
-            and str(registration.get("eventId")) == str(event_id)
-            and str(registration.get("owner")) == str(user_id)
-            for registration in data["registrations"]
-        )
-
-        if already_reserved:
-            return jsonify({
-                "error": "You have already reserved this event."
-            }), 409
-
-        reserved = _event_reserved_count(data, event_id)
-
-        try:
-            capacity = int(event.get("capacity", 1))
-        except (ValueError, TypeError):
-            capacity = 1
-
-        available = capacity - reserved
-
-        if quantity > available:
-            return jsonify({
-                "error": f"Only {max(available, 0)} spots are available."
-            }), 400
-
-        registration = {
-            "id": "reg" + uuid.uuid4().hex[:10],
-            "eventId": event_id,
-            "eventTitle": event["title"],
-            "student_id": user.get(
-                "student_id", user.get("studentId", "")
-            ),
-            "name": user.get("name", ""),
-            "email": user.get("email", ""),
-            "quantity": quantity,
-            "owner": user_id,
-            "attendanceStatus": "registered",
-            "registeredAt": datetime.now(timezone.utc).isoformat(),
-        }
-
-        data["registrations"].append(registration)
-        event["registered"] = reserved + quantity
-        _save_data(data)
+            "error": "You have already registered for this event."
+        }), 409
 
     return jsonify({
-        "message": "Your spot has been reserved!",
+        "message": (
+            "You are registered for this event!"
+            if attending == "yes"
+            else "Your response has been recorded."
+        ),
         "registration": registration,
     }), 201
 
@@ -897,15 +1127,14 @@ def get_my_registrations():
     if permission_error:
         return permission_error
 
-    user_id = session["user_id"]
-
-    with _lock:
-        data = _load_data()
+    with transaction() as cursor:
+        cursor.execute(
+            REGISTRATION_SELECT + " WHERE r.user_id = %s "
+            "ORDER BY r.registered_at",
+            (session["user_id"],),
+        )
         registrations = [
-            registration
-            for registration in data["registrations"]
-            if isinstance(registration, dict)
-            and str(registration.get("owner")) == str(user_id)
+            registration_to_dict(row) for row in cursor.fetchall()
         ]
 
     return jsonify(registrations)
@@ -926,39 +1155,34 @@ def cancel_registration(registration_id):
 
     user_id = session["user_id"]
 
-    with _lock:
-        data = _load_data()
-
-        registration = next(
-            (
-                item for item in data["registrations"]
-                if isinstance(item, dict)
-                and str(item.get("id")) == str(registration_id)
-                and str(item.get("owner")) == str(user_id)
-            ),
-            None,
+    with transaction() as cursor:
+        cursor.execute(
+            REGISTRATION_SELECT + " WHERE r.id = %s AND r.user_id = %s",
+            (registration_id, user_id),
         )
+        row = cursor.fetchone()
 
-        if not registration:
+        if not row:
             return jsonify({
                 "error": "Registration not found."
             }), 404
 
-        if registration.get("attendanceStatus") == "attended":
+        if row["attendance_status"] == "attended":
             return jsonify({
                 "error": "An attended registration cannot be cancelled."
             }), 400
 
-        data["registrations"].remove(registration)
+        event = _fetch_event(cursor, row["event_id"])
 
-        event = _find_event(data, registration.get("eventId"))
+        # Finished events keep their records unchanged.
+        if event and _is_finished(event):
+            return jsonify({
+                "error": "This event has finished, so it cannot be cancelled."
+            }), 400
 
-        if event:
-            event["registered"] = _event_reserved_count(
-                data, event["id"]
-            )
-
-        _save_data(data)
+        cursor.execute(
+            "DELETE FROM registrations WHERE id = %s", (registration_id,)
+        )
 
     return jsonify({"message": "Reservation cancelled."})
 
@@ -984,25 +1208,23 @@ def update_attendance(registration_id):
             "error": "Invalid attendance status."
         }), 400
 
-    with _lock:
-        data = _load_data()
-
-        registration = next(
-            (
-                item for item in data["registrations"]
-                if isinstance(item, dict)
-                and str(item.get("id")) == str(registration_id)
-            ),
-            None,
+    with transaction() as cursor:
+        cursor.execute(
+            "UPDATE registrations SET attendance_status = %s WHERE id = %s",
+            (status, registration_id),
         )
 
-        if not registration:
+        cursor.execute(
+            REGISTRATION_SELECT + " WHERE r.id = %s", (registration_id,)
+        )
+        row = cursor.fetchone()
+
+        if not row:
             return jsonify({
                 "error": "Registration not found."
             }), 404
 
-        registration["attendanceStatus"] = status
-        _save_data(data)
+        registration = registration_to_dict(row)
 
     return jsonify({
         "message": "Attendance updated.",
@@ -1015,9 +1237,15 @@ def update_attendance(registration_id):
 # =========================================================
 
 if __name__ == "__main__":
-    with _lock:
-        data = _load_data()
-        _save_data(data)
+    # Fail early with a clear message if MySQL is not reachable.
+    try:
+        with transaction() as cursor:
+            cursor.execute("SELECT 1")
+    except mysql.connector.Error as error:
+        raise SystemExit(
+            f"Cannot connect to MySQL: {error}\n"
+            "Check DB_HOST, DB_USER, DB_PASSWORD and DB_NAME in .env."
+        )
 
     app.run(
         debug=True,
